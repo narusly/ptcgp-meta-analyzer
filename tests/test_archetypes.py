@@ -34,3 +34,15 @@ def test_add_decks_uses_the_most_common_name():
     assert out["deck"].iloc[:4].nunique() == 1
     assert set(out["deck_name"].iloc[:4]) == {"Mega Greninja ex Greninja ex"}
     assert pd.isna(out["deck"].iloc[4])
+
+
+def test_french_deck_name_translates_each_pokemon_and_keeps_unknown_ones():
+    entries = pd.DataFrame(
+        {
+            "archetype_id": ["mega-greninja-ex-c1-greninja-ex-b1", "mega-altaria-ex-b1-espeon-b3a", "unknown-mon-b1"],
+            "archetype": ["Mega Greninja ex Greninja ex", "Mega Altaria ex Espeon", "Unknown Mon"],
+        }
+    )
+    french = {"Mega Greninja ex": "Méga-Amphinobi-ex", "Greninja ex": "Amphinobi-ex", "Espeon": "Mentali"}
+    out = add_decks(entries, POKEMON, french)
+    assert list(out["deck_name_fr"]) == ["Méga-Amphinobi-ex Amphinobi-ex", "Mega Altaria ex Mentali", "Unknown Mon"]

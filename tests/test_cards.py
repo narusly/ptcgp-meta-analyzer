@@ -1,7 +1,18 @@
 import pandas as pd
 import pytest
 
-from ptcgp.cards import card_id_from_image, cards_table, clean_name, db_set_code, prints_table, sets_table
+from ptcgp.cards import (
+    _with_ex,
+    card_id_from_image,
+    cards_table,
+    clean_name,
+    db_set_code,
+    derive_french,
+    plausible_french,
+    prints_table,
+    sets_table,
+    shop_card_ids,
+)
 
 SETS = {
     "B": [
@@ -61,3 +72,37 @@ def test_cards_table_groups_reprints_and_lists_sets_in_release_order():
 
 def test_sets_table_is_sorted_by_release():
     assert list(sets_table(SETS)["set"]) == ["B1", "B3a", "B4b", "C1"]
+
+
+def test_french_names_from_tcgdex_and_the_database():
+    raw = CARDS + [card("B4", 95, "Galarian Zigzagoon", "cPK_10_019000_00_ZIGZAGOON_C.webp")]
+    cards_fr = [
+        {"set": "B1", "number": 102, "name": "Méga-Altaria-ex"},
+        {"set": "B3a", "number": 107, "name": "Feunnec"},  # traduction fausse (pas d'ex) : écartée
+        {"set": "B4", "number": 95, "name": "GalarianZigzagoon"},  # anglais recollé : écarté
+    ]
+    tcgdex = {"B3a": {"cards": [{"localId": "020", "name": "Mentali"}]}, "A2a": {"cards": [{"localId": "023", "name": "PalkiaForme Originelle"}]}}
+    prints = prints_table(raw, cards_fr, tcgdex).set_index(["set", "number"])
+    assert prints.loc[("B1", 102), "name_fr"] == "Méga-Altaria-ex"
+    assert pd.isna(prints.loc[("B3a", 107), "name_fr"]) and pd.isna(prints.loc[("B4", 95), "name_fr"])
+    assert prints.loc[("B3a", 20), "name_fr"] == "Mentali"
+    cards = cards_table(prints.reset_index(), sets_table(SETS)).set_index("card_id")
+    assert cards.loc["PK_011840", "name_fr"] == "Méga-Altaria-ex"  # nom d'une autre impression de la carte
+    assert cards.loc["PK_022370", "name_fr"] == "Mentali"  # même nom anglais qu'une carte traduite
+
+
+def test_ex_suffix_and_derived_names():
+    assert _with_ex("Chien-Pao ex", "Baojian") == "Baojian-ex"
+    assert _with_ex("Mega Absol ex", "Méga-Absol-ex") == "Méga-Absol-ex"
+    species = {"Greninja": "Amphinobi", "Charizard": "Dracaufeu", "Vulpix": "Goupix", "Lapras": "Lokhlass"}
+    assert derive_french("Mega Greninja ex", species) == "Méga-Amphinobi-ex"
+    assert derive_french("Mega Charizard Y ex", species) == "Méga-Dracaufeu Y-ex"
+    assert derive_french("Alolan Vulpix", species) == "Goupix d'Alola"
+    assert derive_french("Team Rocket's Lapras", species) == "Lokhlass de la Team Rocket"
+    assert derive_french("Raboot", species) is None and derive_french("Greninja", species) is None
+    assert not plausible_french("Mega Sceptile ex", "Feunnec") and plausible_french("Mega Absol ex", "Méga-Absol-ex")
+
+
+def test_shop_cards_are_promo_a_1_to_7():
+    prints = pd.DataFrame({"card_id": ["TR_1", "TR_2", "PK_9"], "set": ["PROMO-A", "A2b", "PROMO-A"], "number": [5, 111, 9]})
+    assert shop_card_ids(prints) == {"TR_1"}

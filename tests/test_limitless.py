@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from ptcgp.limitless import TournamentCache, parse_pairings, parse_standings, records_from_pairings, select_tournaments
+from ptcgp.config import STANDARD_FORMATS
+from ptcgp.limitless import TournamentCache, is_multideck, parse_pairings, parse_standings, records_from_pairings, select_tournaments
 
 
 def test_records_from_pairings_follows_the_limitless_encoding():
@@ -52,17 +53,26 @@ def test_parse_standings_maps_sets_and_flags_missing_lists():
     assert [(c["set"], c["number"], c["count"]) for c in cards] == [("B3a", 20, 2), ("PROMO-A", 7, 2)]
 
 
-def test_select_tournaments_keeps_finished_standard_events():
+def test_select_tournaments_keeps_finished_events_of_the_fetched_formats():
     now = datetime(2026, 11, 21, 12, tzinfo=timezone.utc)
     since = datetime(2026, 10, 29, tzinfo=timezone.utc)
     tournaments = [
         {"id": "ok", "date": "2026-11-10T18:00:00.000Z", "format": None},
         {"id": "custom", "date": "2026-11-10T18:00:00.000Z", "format": "CUSTOM"},
         {"id": "noex", "date": "2026-11-10T18:00:00.000Z", "format": "NOEX"},
+        {"id": "other", "date": "2026-11-10T18:00:00.000Z", "format": "TEAM"},
         {"id": "too-recent", "date": "2026-11-20T18:00:00.000Z", "format": None},
         {"id": "too-old", "date": "2026-10-01T18:00:00.000Z", "format": None},
     ]
-    assert [t["id"] for t in select_tournaments(tournaments, since, now)] == ["ok"]
+    assert [t["id"] for t in select_tournaments(tournaments, since, now)] == ["ok", "custom", "noex"]
+    assert [t["id"] for t in select_tournaments(tournaments, since, now, formats=STANDARD_FORMATS)] == ["ok"]
+
+
+def test_multideck_is_read_from_details_or_from_the_standings():
+    dual = [{"player": "a", "decks": {"1": {}, "2": {}}, "decklists": {"1": {}, "2": {}}}]
+    single = [{"player": "a", "deck": {"id": "x"}, "decklist": {"pokemon": []}}]
+    assert is_multideck(dual) and not is_multideck(single)
+    assert is_multideck(single, {"multideck": True}) and not is_multideck(dual, {"multideck": False})
 
 
 def test_cache_marks_a_tournament_complete_only_with_all_files(tmp_path):

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from .cards import db_set_code
-from .config import GAME, LIMITLESS_API, SETTLE_HOURS, STANDARD_FORMATS
+from .config import FETCHED_FORMATS, GAME, LIMITLESS_API, SETTLE_HOURS, STANDARD_FORMATS
 from .http import HttpClient
 
 PAGE_SIZE = 200
@@ -35,18 +35,34 @@ def list_tournaments(client: HttpClient, since: datetime) -> list[dict]:
     return sorted(found.values(), key=lambda t: t["date"], reverse=True)
 
 
-def select_tournaments(tournaments: list[dict], since: datetime, now: datetime, settle_hours: int = SETTLE_HOURS) -> list[dict]:
-    """Tournois au format standard, commencés depuis ``since`` et terminés (au moins ``settle_hours`` h)."""
+def select_tournaments(
+    tournaments: list[dict],
+    since: datetime,
+    now: datetime,
+    formats: set | None = None,
+    settle_hours: int = SETTLE_HOURS,
+) -> list[dict]:
+    """Tournois des ``formats`` voulus (défaut : standard, CUSTOM et NOEX), commencés depuis ``since``
+    et terminés (au moins ``settle_hours`` h)."""
+    formats = FETCHED_FORMATS if formats is None else formats
     cutoff = now - timedelta(hours=settle_hours)
-    return [
-        t
-        for t in tournaments
-        if t.get("format") in STANDARD_FORMATS and since <= parse_date(t["date"]) <= cutoff
-    ]
+    return [t for t in tournaments if t.get("format") in formats and since <= parse_date(t["date"]) <= cutoff]
+
+
+def is_multideck(standings: list[dict], details: dict | None = None) -> bool:
+    """Tournoi « Dual Deck » : chaque joueur inscrit deux decks (``decks`` et ``decklists`` au pluriel).
+
+    Les appariements disent alors quel deck a joué chaque manche (``p1deck``, ``p2deck``), mais
+    l'archétype d'un joueur n'est plus unique : ces tournois sont écartés des statistiques.
+    """
+    if details and details.get("multideck") is not None:
+        return bool(details["multideck"])
+    return any("decklists" in s or "decks" in s for s in standings)
 
 
 class TournamentCache:
-    """Un dossier par tournoi : ``meta.json`` (fiche de la liste), ``standings.json``, ``pairings.json``."""
+    """Un dossier par tournoi : ``meta.json`` (fiche de la liste), ``standings.json``, ``pairings.json``,
+    et ``details.json`` pour les formats non standard (cartes bannies, tournoi Dual Deck)."""
 
     KINDS = ("meta", "standings", "pairings")
 
@@ -69,6 +85,10 @@ class TournamentCache:
     def load(self, tournament_id: str, kind: str):
         return json.loads(self.path(tournament_id, kind).read_text(encoding="utf-8"))
 
+    def load_optional(self, tournament_id: str, kind: str):
+        path = self.path(tournament_id, kind)
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
     def ids(self) -> list[str]:
         if not self.root.exists():
             return []
@@ -82,7 +102,10 @@ def fetch_tournaments(
     max_new: int | None = None,
     log: Callable[[str], None] = print,
 ) -> int:
-    """Télécharge classements et appariements des tournois absents du cache ; renvoie le nombre ajouté."""
+    """Télécharge classements et appariements des tournois absents du cache ; renvoie le nombre ajouté.
+
+    Pour les formats non standard, la fiche ``details`` (cartes bannies, Dual Deck) est aussi gardée.
+    """
     todo = [t for t in tournaments if not cache.has(t["id"])]
     cached = len(tournaments) - len(todo)
     if max_new is not None:
@@ -94,8 +117,11 @@ def fetch_tournaments(
         pairings = client.get_json(f"{LIMITLESS_API}/tournaments/{tid}/pairings")
         cache.save(tid, "standings", standings)
         cache.save(tid, "pairings", pairings)
+        if t.get("format") not in STANDARD_FORMATS:
+            cache.save(tid, "details", client.get_json(f"{LIMITLESS_API}/tournaments/{tid}/details"))
         cache.save(tid, "meta", t)  # écrit en dernier : sa présence signifie « tournoi complet »
-        log(f"[{i}/{len(todo)}] {t['date'][:10]}  {t.get('players', '?'):>4} joueurs  {t['name'][:60]}")
+        fmt = t.get("format") or "standard"
+        log(f"[{i}/{len(todo)}] {t['date'][:10]}  {fmt:<8} {t.get('players', '?'):>4} joueurs  {t['name'][:60]}")
     return len(todo)
 
 

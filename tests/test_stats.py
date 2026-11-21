@@ -1,71 +1,10 @@
 import numpy as np
 import pandas as pd
 import pytest
+from synthetic import BEATS, make_data, with_format
 
 from ptcgp import stats
-
-# --------------------------------------------------------------------------- jeu de données synthétique
-# Trois decks en « pierre-feuille-ciseaux » : A bat B, B bat C, C bat A (75 % des manches).
-
-BEATS = {("A", "B"), ("B", "C"), ("C", "A")}
-
-
-def make_data(players_per_deck: int = 12, seed: int = 1) -> stats.Data:
-    rng = np.random.default_rng(seed)
-    sets = pd.DataFrame(
-        {
-            "set": ["PROMO-A", "B1", "C1"],
-            "series": ["P", "B", "C"],
-            "name": ["Promo A", "Mega Rising", "Dual Fusion"],
-            "name_fr": ["", "", ""],
-            "release_date": ["2024-10-30", "2025-10-30", "2026-10-29"],
-            "count": [1, 1, 1],
-        }
-    )
-    cards = pd.DataFrame(
-        {
-            "card_id": ["PK_1", "PK_2", "PK_3", "TR_7"],
-            "name": ["Alpha", "Beta", "Gamma", "Professor's Research"],
-            "category": ["pokemon", "pokemon", "pokemon", "supporter"],
-            "sets": ["B1", "C1", "B1|C1", "PROMO-A"],
-        }
-    )
-    prints = pd.DataFrame(
-        {
-            "card_id": ["PK_1", "PK_1", "PK_2", "PK_3", "PK_3", "TR_7"],
-            "set": ["B1", "B1", "C1", "B1", "C1", "PROMO-A"],
-            "number": [10, 250, 20, 30, 31, 7],
-            "rarity": ["C", "SR", "C", "U", "C", "U"],
-        }
-    )
-    deck_card = {"A": "PK_1", "B": "PK_2", "C": "PK_3"}
-    entries, deck_cards = [], []
-    for deck in "ABC":
-        for k in range(players_per_deck):
-            player = f"{deck}{k}"
-            entries.append(
-                {"tournament_id": "t1", "player": player, "archetype_id": deck.lower(), "archetype": f"Deck {deck}",
-                 "wins": 0, "losses": 0, "ties": 0, "placing": None, "drop": None, "has_decklist": True,
-                 "deck": deck, "deck_name": f"Deck {deck}"}
-            )
-            if deck == "A" and k == 0:  # 1 version normale + 1 version alternative
-                deck_cards += [{"tournament_id": "t1", "player": player, "card_id": "PK_1", "set": "B1", "number": n, "count": 1} for n in (10, 250)]
-            else:
-                deck_cards.append({"tournament_id": "t1", "player": player, "card_id": deck_card[deck], "set": "B1", "number": 1, "count": 2})
-            deck_cards.append({"tournament_id": "t1", "player": player, "card_id": "TR_7", "set": "PROMO-A", "number": 7, "count": 2})
-    matches = []
-    players = [(e["player"], e["deck"]) for e in entries]
-    for i, (p1, d1) in enumerate(players):
-        for p2, d2 in players[i + 1:]:
-            if d1 == d2:
-                continue
-            p_win = 0.75 if (d1, d2) in BEATS else 0.25
-            result = 1 if rng.random() < p_win else 2
-            matches.append({"tournament_id": "t1", "phase": 1, "round": 1, "player1": p1, "player2": p2,
-                            "result": result, "games1": int(result == 1), "games2": int(result == 2)})
-    tournaments = pd.DataFrame({"tournament_id": ["t1"], "date": ["2026-11-01T10:00:00.000Z"], "records_ok": [1.0]})
-    return stats.Data(sets, prints, cards, tournaments, pd.DataFrame(entries), pd.DataFrame(deck_cards), pd.DataFrame(matches))
-
+from ptcgp.formats import Pool
 
 # --------------------------------------------------------------------------- modèles
 
@@ -117,17 +56,44 @@ def test_evaluate_without_filter_equals_the_full_model():
     assert ranking["p_best"].sum() == pytest.approx(1.0)
 
 
-# --------------------------------------------------------------------------- filtre par extension et listes
+def test_matchups_are_consistent_with_the_ranking():
+    data = make_data()
+    model, _ = stats.fit(data, min_share=0.0)
+    ranking, m = stats.evaluate_matchups(model, data, stats.legal_entries(data, None), min_lists=1, draws=500)
+    share = model.meta["share"].to_numpy()
+    for r in ranking.itertuples():
+        assert m.mean.loc[r.deck].to_numpy() @ share == pytest.approx(r.win_rate)
+        assert (m.low.loc[r.deck] <= m.mean.loc[r.deck] + 1e-9).all() and (m.mean.loc[r.deck] <= m.high.loc[r.deck] + 1e-9).all()
+    assert m.games.loc["A", "B"] == pytest.approx(144)  # 12 × 12 matchs d'une manche
+
+
+def test_meta_table_needs_five_players_per_tracked_deck():
+    entries = make_data(players_per_deck=4).entries
+    meta = stats.meta_table(entries, min_share=0.0)
+    assert list(meta.index) == [stats.OTHERS]  # 4 joueurs par deck : tous dans « Autres decks »
+
+
+# --------------------------------------------------------------------------- réserve de son deck et listes
 
 
 def test_legal_entries_with_and_without_tolerance():
     data = make_data()
-    allowed = {"C1", "PROMO-A"}  # Alpha (deck A) n'existe qu'en B1
+    allowed = {"C1", "PROMO-A"}  # Alpha (deck A) n'existe qu'en B1, Delta (3 listes C) qu'en PROMO-B
     strict = stats.legal_entries(data, allowed)
     by_deck = data.entries.assign(legal=strict).groupby("deck")["legal"].all()
-    assert by_deck.to_dict() == {"A": False, "B": True, "C": True}
+    assert by_deck.to_dict() == {"A": False, "B": True, "C": False}
     assert stats.legal_entries(data, allowed, max_missing=2).all()
-    assert stats.missing_copies(data, allowed).groupby(data.entries["deck"]).max().to_dict() == {"A": 2, "B": 0, "C": 0}
+    assert stats.missing_copies(data, allowed).groupby(data.entries["deck"]).max().to_dict() == {"A": 2, "B": 0, "C": 1}
+
+
+def test_user_pool_keeps_shop_trainers_and_drops_event_promos_by_default():
+    data = make_data()
+    ok = stats.user_pool(data, {"C1"}).available(data.cards)
+    assert ok["TR_7"] and ok["PK_2"]  # dresseur de boutique, carte de C1
+    assert not ok["PK_4"] and not ok["PK_1"]  # promo d'événement, carte de B1
+    assert stats.user_pool(data, {"C1"}, event_promos=True).available(data.cards)["PK_4"]
+    assert not stats.user_pool(data).available(data.cards)["PK_4"]  # toutes les extensions, sans promos d'événement
+    assert stats.user_pool(data, None, event_promos=True) is None  # aucune restriction
 
 
 def test_filtered_candidates_exclude_unplayable_decks():
@@ -145,4 +111,58 @@ def test_deck_list_merges_alternate_prints_and_flags_missing_cards():
     assert rows.loc["Alpha", "count"] == 2 and not rows.loc["Alpha", "available"]
     assert rows.loc["Alpha", "print"] == "B1-010"  # version la moins rare
     assert rows.loc["Professor's Research", "available"]
+    assert rows.loc["Professor's Research", "name_fr"] == "Recherches Professorales"
     assert list(table["category"])[0] == "pokemon"
+
+
+def test_deck_list_prefers_the_shop_version_of_shop_trainers():
+    data = make_data()
+    data.prints = pd.concat([data.prints, pd.DataFrame({"card_id": ["TR_7"], "set": ["C1"], "number": [99], "rarity": ["C"]})], ignore_index=True)
+    data.cards.loc[data.cards["card_id"] == "TR_7", "sets"] = "PROMO-A|C1"
+    pool = Pool(sets=frozenset({"C1"}), always=frozenset({"TR_7"}))
+    table, _, _ = stats.deck_list(data, stats.legal_entries(data, None), "B", allowed=pool)
+    assert table.set_index("name").loc["Professor's Research", "print"] == "P-A-007"
+
+
+# --------------------------------------------------------------------------- formats
+
+
+def test_select_keeps_only_the_requested_format():
+    data = with_format(make_data())
+    assert list(stats.select(data).tournaments["tournament_id"]) == ["t1"]
+    assert list(stats.select(data, format_id="C1").tournaments["tournament_id"]) == ["t2"]
+    assert stats.default_since(data, "C1") is None  # extensions fixes : tout l'historique
+
+
+def test_rules_mode_ranks_the_format_and_filters_only_your_deck():
+    data = with_format(make_data())
+    res = stats.analyze(data, format_id="C1", min_share=0.0, min_lists=1, draws=200)
+    assert set(res.ranking["deck"]) == {"B", "C"}  # Alpha (B1) n'est pas dans la réserve du format
+    assert set(res.data.tournaments["tournament_id"]) == {"t2"}
+    # Retirer la promo permise en plus : les 3 listes C qui la jouent ne comptent plus pour ton deck
+    pool = stats.rules_pool(data, "C1", removed={"PK_4"})
+    res2 = stats.analyze(data, format_id="C1", min_share=0.0, min_lists=1, draws=200, pool=pool)
+    assert res2.ranking.set_index("deck").loc["C", "lists"] == 9
+    assert set(res2.model.decks) == set(res.model.decks)  # la méta adverse ne change pas
+
+
+def test_matchup_table_lists_opponents_from_worst_to_best():
+    data = make_data()
+    res = stats.analyze(data, sets=None, event_promos=True, min_share=0.0, min_lists=1, draws=200)
+    table = stats.matchup_table(res, "A")
+    assert list(table["opp"]) == ["C", "B"]  # A perd contre C, bat B
+    assert table["win"].is_monotonic_increasing
+
+
+def test_holdout_gaps_match_the_score_table():
+    data = make_data(players_per_deck=12)
+    late = data.matches.assign(tournament_id="t2")
+    data.matches = pd.concat([data.matches, late], ignore_index=True)
+    data.entries = pd.concat([data.entries, data.entries.assign(tournament_id="t2")], ignore_index=True)
+    data.tournaments = pd.DataFrame({"tournament_id": ["t1", "t2"], "date": ["2026-11-01", "2026-11-05"], "records_ok": [1.0, 1.0]})
+    result = stats.holdout_scores(data, "2026-11-03", min_share=0.0, bootstrap=200)
+    scores = result.set_index("modèle")["log_loss"]
+    gap, low, high = result.attrs["gaps"]["Pile ou face (50 %)"]
+    assert gap == pytest.approx(scores["Bradley-Terry + lissage bayésien"] - scores["Pile ou face (50 %)"])
+    assert low <= gap <= high
+    assert gap < 0  # le modèle appris sur t1 prédit t2 mieux que le hasard

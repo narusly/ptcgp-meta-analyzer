@@ -1,6 +1,7 @@
 """Base de cartes : impressions, cartes et extensions.
 
-Source : https://github.com/flibustier/pokemon-tcg-pocket-database (licence MIT).
+Source : https://github.com/flibustier/pokemon-tcg-pocket-database (licence MIT). Noms français :
+TCGdex (https://tcgdex.dev, jusqu'à B2a), complété par les traductions de la base (PROMO-B, B4).
 
 Une même carte peut être imprimée plusieurs fois (illustrations alternatives, rééditions dans un autre
 pack). Toutes ces impressions jouent pareil. Pour les regrouper, on utilise l'identifiant interne du
@@ -19,11 +20,13 @@ from typing import Callable
 
 import pandas as pd
 
-from .config import CARDS_REPO, LIMITLESS_SET_ALIASES
+from .config import CARDS_REPO, LIMITLESS_SET_ALIASES, SHOP_PRINTS, TCGDEX_API, TCGDEX_SERIES
 from .http import HttpClient
 
 IMAGE_ID = re.compile(r"^c([A-Z]+)_\d+_(\d{6})_\d{2}_")
 CARD_FILES = ("cards.extra.json", "sets.json")
+FRENCH_FILE = "cards.fr.json"
+TCGDEX_DIR = "tcgdex_fr"
 
 
 def card_id_from_image(image: str) -> str:
@@ -59,16 +62,95 @@ def download(client: HttpClient, dest: Path, log: Callable[[str], None] = print)
         log(f"Commit de la base introuvable ({err}) : téléchargement depuis main")
     ref = source["commit"] or "main"
     data = {}
-    for name in CARD_FILES:
+    for name in CARD_FILES + (FRENCH_FILE,):
         raw = client.get_bytes(f"https://raw.githubusercontent.com/{CARDS_REPO}/{ref}/dist/{name}")
         (dest / name).write_bytes(raw)
         data[name] = json.loads(raw.decode("utf-8"))
     (dest / "source.json").write_text(json.dumps(source, indent=2), encoding="utf-8")
+    try:
+        data[TCGDEX_DIR] = download_tcgdex(client, dest / TCGDEX_DIR)
+    except Exception as err:  # noms français facultatifs : on garde ceux déjà en cache
+        log(f"Noms français de TCGdex indisponibles ({err}) : cache précédent conservé")
     return data
 
 
+def download_tcgdex(client: HttpClient, dest: Path) -> dict[str, dict]:
+    """Noms français de chaque extension Pocket de TCGdex (une requête par extension)."""
+    dest.mkdir(parents=True, exist_ok=True)
+    series = client.get_json(f"{TCGDEX_API}/series/{TCGDEX_SERIES}")
+    out = {}
+    for s in series.get("sets", []):
+        data = client.get_json(f"{TCGDEX_API}/sets/{s['id']}")
+        (dest / f"{s['id']}.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        out[s["id"]] = data
+    return out
+
+
 def load(dest: Path) -> dict:
-    return {name: json.loads((dest / name).read_text(encoding="utf-8")) for name in CARD_FILES}
+    data = {name: json.loads((dest / name).read_text(encoding="utf-8")) for name in CARD_FILES}
+    if (dest / FRENCH_FILE).exists():
+        data[FRENCH_FILE] = json.loads((dest / FRENCH_FILE).read_text(encoding="utf-8"))
+    tcgdex = dest / TCGDEX_DIR
+    if tcgdex.exists():
+        data[TCGDEX_DIR] = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(tcgdex.glob("*.json"))}
+    return data
+
+
+def _with_ex(english: str, french: str) -> str:
+    """TCGdex écrit « Baojian » pour Chien-Pao ex : on remet le suffixe, comme la base (« Méga-Absol-ex »)."""
+    if english.endswith(" ex") and not french.lower().endswith("ex"):
+        return f"{french}-ex"
+    return french
+
+
+def plausible_french(english: str, french: str) -> bool:
+    """Écarte les « traductions » de la base qui n'en sont pas : nom anglais recollé
+    (« GalarianMeowth »), ou carte ex traduite par un autre Pokémon (Mega Sceptile ex → « Feunnec »)."""
+    if not french or french == english or french.replace(" ", "") == english.replace(" ", ""):
+        return False
+    return not (english.endswith(" ex") and not french.lower().endswith("ex"))
+
+
+REGIONS = {"Alolan": "d'Alola", "Galarian": "de Galar", "Paldean": "de Paldea", "Hisuian": "de Hisui"}
+_FORM = re.compile(r"^(?P<mega>Mega )?(?P<rocket>Team Rocket's )?(?:(?P<region>Alolan|Galarian|Paldean|Hisuian) )?(?P<base>.+?)(?P<xy> [XY])?(?P<ex> ex)?$")
+
+
+def derive_french(english: str, species: dict[str, str]) -> str | None:
+    """Nom français reconstruit à partir de l'espèce : « Mega Greninja ex » → « Méga-Amphinobi-ex »,
+    « Alolan Vulpix » → « Goupix d'Alola ». None si l'espèce n'a pas de nom français connu."""
+    m = _FORM.match(english)
+    if not m or m.group("base") not in species or m.group("base") == english:
+        return None
+    name = ("Méga-" if m.group("mega") else "") + species[m.group("base")] + (m.group("xy") or "")
+    if m.group("region"):
+        name += f" {REGIONS[m.group('region')]}"
+    if m.group("rocket"):
+        name += " de la Team Rocket"
+    return name + ("-ex" if m.group("ex") else "")
+
+
+def french_print_names(prints: pd.DataFrame, cards_fr: list[dict] | None, tcgdex: dict[str, dict] | None) -> pd.Series:
+    """Nom français de chaque impression quand une source le donne (sinon NaN), aligné sur ``prints``.
+
+    Ordre de priorité : TCGdex, puis les traductions de la base qui passent ``plausible_french``.
+    """
+    names: dict[tuple[str, int], str] = {}
+    english = dict(zip(zip(prints["set"], prints["number"]), prints["name"]))
+    for c in cards_fr or []:
+        key = (c["set"], int(c["number"]))
+        name = clean_name(c.get("name", ""))
+        if key in english and plausible_french(english[key], name):
+            names[key] = name
+    for set_id, data in (tcgdex or {}).items():
+        code = db_set_code(set_id)
+        for c in data.get("cards", []):
+            local = str(c.get("localId", ""))
+            key = (code, int(local)) if local.isdigit() else None
+            if key in english and c.get("name"):
+                # TCGdex écrit « PalkiaForme Originelle » : on rétablit l'espace manquant
+                name = re.sub(r"([a-zàâçéèêëîïôûùüÿœ])([A-Z])", r"\1 \2", clean_name(c["name"]))
+                names[key] = _with_ex(english[key], name)
+    return pd.Series([names.get(k) for k in zip(prints["set"], prints["number"])], index=prints.index, dtype=object)
 
 
 def sets_table(sets_json: dict) -> pd.DataFrame:
@@ -90,8 +172,8 @@ def sets_table(sets_json: dict) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values(["release_date", "set"], ignore_index=True)
 
 
-def prints_table(cards_json: list[dict]) -> pd.DataFrame:
-    """Une ligne par impression (extension + numéro), avec l'identifiant de la carte."""
+def prints_table(cards_json: list[dict], cards_fr: list[dict] | None = None, tcgdex: dict[str, dict] | None = None) -> pd.DataFrame:
+    """Une ligne par impression (extension + numéro), avec l'identifiant de la carte et son nom français."""
     rows = [
         {
             "card_id": card_id_from_image(c["image"]),
@@ -113,7 +195,14 @@ def prints_table(cards_json: list[dict]) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     for col in ("hp", "retreat_cost"):
         df[col] = df[col].astype("Int64")
+    df.insert(df.columns.get_loc("name") + 1, "name_fr", french_print_names(df, cards_fr, tcgdex))
     return df
+
+
+def shop_card_ids(prints: pd.DataFrame) -> set[str]:
+    """Dresseurs de boutique (voir ``config.SHOP_PRINTS``), toujours permis."""
+    keys = set(SHOP_PRINTS)
+    return {cid for cid, key in zip(prints["card_id"], zip(prints["set"], prints["number"])) if key in keys}
 
 
 def cards_table(prints: pd.DataFrame, sets: pd.DataFrame) -> pd.DataFrame:
@@ -128,6 +217,13 @@ def cards_table(prints: pd.DataFrame, sets: pd.DataFrame) -> pd.DataFrame:
     first = ordered.drop_duplicates("card_id").set_index("card_id")
     sets_per_card = ordered.groupby("card_id", sort=False)["set"].agg(lambda s: "|".join(dict.fromkeys(s)))
     out = first[["name", "category", "element", "stage", "hp", "retreat_cost", "weakness", "evolves_from"]].copy()
+    if "name_fr" in prints:
+        known = ordered.dropna(subset=["name_fr"])
+        by_card = known.drop_duplicates("card_id").set_index("card_id")["name_fr"]
+        by_name = known.groupby("name")["name_fr"].agg(lambda s: s.mode().iloc[0])
+        name_fr = by_card.reindex(out.index).fillna(out["name"].map(by_name))
+        derived = out["name"].map(lambda n: derive_french(n, by_name.to_dict()))
+        out.insert(1, "name_fr", name_fr.fillna(derived))
     out["is_ex"] = out["name"].str.endswith(" ex")
     out["sets"] = sets_per_card
     out["n_prints"] = ordered.groupby("card_id").size()
