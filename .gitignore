@@ -1,0 +1,7 @@
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# Réponses brutes des API : cache local, reconstruit à la demande
+data/raw/
