@@ -10,6 +10,7 @@ import pandas as pd
 
 from . import cards as cardsmod
 from . import formats as formatsmod
+from .config import KEEP_DAYS
 from .limitless import TournamentCache, is_multideck, parse_pairings, parse_standings, records_from_pairings
 
 TOURNAMENT_COLUMNS = [
@@ -35,10 +36,25 @@ def build_cards(raw_cards: Path, out: Path) -> dict[str, pd.DataFrame]:
     return {"sets": sets, "prints": prints, "cards": cards}
 
 
-def build_tournaments(cache: TournamentCache, prints: pd.DataFrame, out: Path) -> dict[str, pd.DataFrame]:
+def pseudonyms(entries: list[dict], pairings: list[dict]) -> dict[str, str]:
+    """Pseudo Limitless → « p0001 », « p0002 »… dans l'ordre du classement, propre à chaque tournoi.
+
+    Les tables n'ont pas besoin des pseudos : on ne les publie pas. Ce n'est pas un anonymat (le
+    classement de chaque tournoi reste public sur Limitless), mais on ne recopie pas les pseudos en
+    masse, et un joueur ne peut pas être suivi d'un tournoi à l'autre dans nos tables.
+    """
+    names = [e["player"] for e in entries] + [p.get(k) for p in pairings for k in ("player1", "player2") if p.get(k)]
+    return {name: f"p{i:04d}" for i, name in enumerate(dict.fromkeys(names), 1)}
+
+
+def build_tournaments(cache: TournamentCache, prints: pd.DataFrame, out: Path, keep_days: int = KEEP_DAYS) -> dict[str, pd.DataFrame]:
+    """Tables des tournois du cache, sur les ``keep_days`` jours précédant le plus récent."""
     metas, entries, deck_cards, matches = [], [], [], []
-    for tid in cache.ids():
-        meta = cache.load(tid, "meta")
+    infos = {tid: cache.load(tid, "meta") for tid in cache.ids()}
+    if infos:
+        latest = max(pd.Timestamp(m["date"]) for m in infos.values())
+        infos = {tid: m for tid, m in infos.items() if pd.Timestamp(m["date"]) >= latest - pd.Timedelta(days=keep_days)}
+    for tid, meta in infos.items():
         pairings = cache.load(tid, "pairings")
         standings = cache.load(tid, "standings")
         details = cache.load_optional(tid, "details") or {}
@@ -47,6 +63,11 @@ def build_tournaments(cache: TournamentCache, prints: pd.DataFrame, out: Path) -
         # Contrôle qualité : part des joueurs dont le bilan recalculé égale celui affiché par Limitless
         recomputed = records_from_pairings(pairings)
         same = sum(recomputed.get(e["player"], (0, 0, 0)) == (e["wins"], e["losses"], e["ties"]) for e in t_entries)
+        alias = pseudonyms(t_entries, pairings)
+        for row in t_entries + t_cards:
+            row["player"] = alias[row["player"]]
+        for row in t_matches:
+            row["player1"], row["player2"] = alias[row["player1"]], alias[row["player2"]]
         metas.append(
             {
                 "tournament_id": tid,

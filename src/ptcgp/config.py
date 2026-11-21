@@ -32,6 +32,17 @@ FETCHED_FORMATS = STANDARD_FORMATS | {"CUSTOM", "NOEX"}
 # Un tournoi n'est mis en cache qu'une fois terminé : on attend 48 h après son début.
 SETTLE_HOURS = 48
 
+# Les tables ne gardent que les tournois des 120 jours précédant le plus récent.
+KEEP_DAYS = 120
+
+# Tables publiées chaque semaine par la GitHub Action sur la branche « data » ; l'app en ligne les lit
+# de là quand data/processed n'existe pas (Streamlit Community Cloud ne voit que la branche main).
+DATA_URL = "https://raw.githubusercontent.com/narusly/ptcgp-meta-analyzer/data/processed"  # PTCGP_DATA_URL pour la changer
+PROCESSED_FILES = (
+    "sets.csv", "prints.csv", "cards.csv", "tournaments.csv", "formats.csv", "format_cards.csv",
+    "entries.csv.gz", "deck_cards.csv.gz", "matches.csv.gz",
+)
+
 # Codes d'extension de Limitless qui diffèrent de ceux de la base de cartes.
 LIMITLESS_SET_ALIASES = {"P-A": "PROMO-A", "P-B": "PROMO-B", "P-C": "PROMO-C"}
 

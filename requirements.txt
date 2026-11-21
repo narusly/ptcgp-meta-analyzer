@@ -1,0 +1,5 @@
+# Dépendances de l'app en ligne (Streamlit Community Cloud), aux versions testées
+altair==6.3.0
+numpy==2.5.4
+pandas==3.0.6
+streamlit==1.67.0

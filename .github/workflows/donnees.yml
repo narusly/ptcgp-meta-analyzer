@@ -1,0 +1,73 @@
+name: données
+
+# Chaque mardi : télécharge les nouveaux tournois Limitless, reconstruit les tables et les publie sur la
+# branche « data », que lit l'app en ligne (une seule mise à jour par semaine). Le cache brut (réponses
+# de l'API, avec les pseudos des joueurs) reste dans le cache privé de GitHub Actions : il n'est jamais
+# publié. Le vendredi, une simple lecture de ce cache l'empêche d'expirer (7 jours sans accès).
+on:
+  schedule:
+    - cron: "17 5 * * 2"   # mardi 05:17 UTC : les tournois du week-end sont terminés depuis 48 h
+    - cron: "17 5 * * 5"   # vendredi 05:17 UTC : lecture du cache seulement, aucune requête à Limitless
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: donnees
+  cancel-in-progress: false
+
+jobs:
+  garde-le-cache:
+    if: github.event.schedule == '17 5 * * 5'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: raw-lecture
+          restore-keys: raw-
+
+  mise-a-jour:
+    if: github.event.schedule != '17 5 * * 5'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300   # sans cache, 90 jours de tournois demandent environ 2 h (50 requêtes / 5 min)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+
+      - name: Restaure le cache brut
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: raw-${{ github.run_id }}
+          restore-keys: raw-
+
+      - name: Télécharge les nouveaux tournois et reconstruit les tables
+        run: python -m ptcgp update
+
+      - name: Garde le cache brut, même après un échec (la prochaine exécution reprend là)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/raw
+          key: raw-${{ github.run_id }}
+
+      - name: Vérifie que l'analyse tourne sur les nouvelles tables
+        run: |
+          python -m ptcgp stats --top 3
+          python -m ptcgp formats
+
+      - name: Publie les tables sur la branche data (un seul commit, réécrit chaque semaine)
+        run: |
+          mkdir -p publish && cp -r data/processed publish/processed
+          cd publish
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add processed
+          git commit -q -m "Données du $(date -u +%F)"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data

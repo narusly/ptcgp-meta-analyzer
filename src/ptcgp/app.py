@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import os
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -21,8 +22,9 @@ import pandas as pd
 import streamlit as st
 
 from ptcgp import stats
-from ptcgp.config import PROCESSED
+from ptcgp.config import DATA_URL, PROCESSED, PROCESSED_FILES
 from ptcgp.formats import STANDARD, main_sets
+from ptcgp.http import HttpClient
 
 # Couleur de la série (palette de référence, emplacement 1), une valeur par thème
 SERIES = {"light": "#2a78d6", "dark": "#3987e5"}
@@ -43,12 +45,27 @@ def data_path() -> str:
     return os.environ.get("PTCGP_PROCESSED", str(PROCESSED))
 
 
-@st.cache_resource(show_spinner="Chargement des données…")
+def fetch_processed(url: str, dest: Path) -> Path:
+    """Télécharge les tables publiées (branche « data ») dans ``dest``."""
+    dest.mkdir(parents=True, exist_ok=True)
+    client = HttpClient(max_retries=3)
+    for name in PROCESSED_FILES:
+        (dest / name).write_bytes(client.get_bytes(f"{url}/{name}"))
+    return dest
+
+
+@st.cache_resource(ttl=24 * 3600, max_entries=1, show_spinner="Téléchargement des données…")
+def remote_data(url: str) -> str:
+    """Tables de la branche « data », rafraîchies au plus une fois par jour (app en ligne)."""
+    return str(fetch_processed(url, Path(tempfile.mkdtemp(prefix="ptcgp-"))))
+
+
+@st.cache_resource(max_entries=2, show_spinner="Chargement des données…")
 def load_data(path: str) -> stats.Data:
     return stats.load(Path(path))
 
 
-@st.cache_resource(max_entries=12, show_spinner="Calcul du classement…")
+@st.cache_resource(max_entries=6, show_spinner="Calcul du classement…")
 def run(
     path: str,
     format_id: str,
@@ -239,7 +256,9 @@ def header(data: stats.Data, res: stats.Analysis, params: dict) -> None:
     cols[1].metric("Joueurs", f"{len(window.entries):,}".replace(",", " "))
     cols[2].metric("Manches analysées", f"{games:,.0f}".replace(",", " "))
     cols[3].metric("Decks suivis", f"{len(res.model.decks) - 1}", help="Hors « Autres decks » (moins de 0,5 % des joueurs ou moins de 5 joueurs).")
+    updated = date.fromisoformat(data.tournaments["date"].max()[:10])
     period = f"depuis le {date.fromisoformat(res.since[:10]):%d/%m/%Y}" if res.since else "sur tout l'historique"
+    period += f" (tournois jusqu'au {updated:%d/%m/%Y}, mise à jour chaque semaine)"
     if params["mode"] == CLASSE:
         st.caption(f"Format standard, {period}. Le filtre ne s'applique qu'à ton deck : tes adversaires gardent la vraie méta.")
     else:
@@ -251,8 +270,11 @@ def main() -> None:
     st.set_page_config(page_title="PTCGP Meta Analyzer", page_icon="🃏", layout="wide")
     path = data_path()
     if not (Path(path) / "tournaments.csv").exists():
-        st.error("Pas de données : lance d'abord « python -m ptcgp update ».")
-        st.stop()
+        try:
+            path = remote_data(os.environ.get("PTCGP_DATA_URL", DATA_URL))
+        except Exception as err:  # hors ligne, ou branche « data » pas encore publiée
+            st.error(f"Données indisponibles ({err}). En local, lance d'abord « python -m ptcgp update ».")
+            st.stop()
     data = load_data(path)
     params = sidebar(data)
 

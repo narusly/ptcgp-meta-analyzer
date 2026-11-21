@@ -3,5 +3,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-# Réponses brutes des API : cache local, reconstruit à la demande
-data/raw/
+# Données : cache brut des API (jamais publié) et tables reconstruites à la demande.
+# Les tables publiées vivent sur la branche « data », mise à jour par la GitHub Action.
+data/

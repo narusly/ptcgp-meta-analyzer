@@ -1,12 +1,16 @@
 # PTCGP Meta Analyzer
 
+[![App en ligne](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://ptcgp-meta-analyzer.streamlit.app)
+[![tests](https://github.com/narusly/ptcgp-meta-analyzer/actions/workflows/tests.yml/badge.svg)](https://github.com/narusly/ptcgp-meta-analyzer/actions/workflows/tests.yml)
+[![données](https://github.com/narusly/ptcgp-meta-analyzer/actions/workflows/donnees.yml/badge.svg)](https://github.com/narusly/ptcgp-meta-analyzer/actions/workflows/donnees.yml)
+
 Quel deck de Pokémon TCG Pocket a le plus de chances de gagner, contre la méta du moment et avec les
 cartes de son choix ? Le projet répond à partir des résultats publics des tournois Limitless : parts de
 méta, matchups deck contre deck et taux de victoire attendu de chaque archétype. Il reconnaît aussi les
 formats à règles spéciales (« Fusion Double seule », « De A1 à A3b »…) et les analyse à part.
 
-> **État : étape 3 sur 4.** Données, statistiques, formats spéciaux et interface Streamlit en local.
-> Viendront ensuite la mise en ligne et la mise à jour hebdomadaire automatique.
+**[Ouvrir l'app](https://ptcgp-meta-analyzer.streamlit.app)** (consultable sur téléphone), mise à jour
+automatiquement chaque mardi.
 
 ## En bref (méta du 29 octobre au 18 novembre 2026, 69 tournois, 23 338 manches)
 
@@ -39,7 +43,22 @@ formats à règles spéciales (« Fusion Double seule », « De A1 à A3b »…)
 Trois formats Limitless sont téléchargés : le **standard**, **CUSTOM** (règles maison) et **NOEX** (sans
 ex), soit 323, 125 et 8 tournois du 23 août au 18 novembre 2026. Un tournoi n'est retenu qu'une fois
 terminé (48 h après son début), puis lu depuis le cache local (`data/raw/`, non versionné). Pour les
-formats non standard, la fiche `details` est aussi gardée : cartes bannies, tournoi Dual Deck.
+formats non standard, la fiche `details` est aussi gardée : cartes bannies, tournoi Dual Deck. Les tables
+ne gardent que les 120 jours précédant le tournoi le plus récent.
+
+**Mise à jour automatique.** Chaque mardi à 05:17 UTC (les tournois du week-end sont alors terminés
+depuis 48 h), une GitHub Action télécharge les nouveaux tournois, reconstruit les tables, vérifie que
+l'analyse tourne, puis publie les tables sur la branche [`data`](https://github.com/narusly/ptcgp-meta-analyzer/tree/data),
+réécrite en un seul commit : la branche `main` ne contient que le code. L'app en ligne lit ses tables
+sur cette branche et les rafraîchit chaque jour. Le cache brut reste dans le cache privé de GitHub
+Actions ; une lecture le vendredi l'empêche d'expirer, et s'il expirait quand même, l'Action
+retélécharge 90 jours de tournois (environ 2 h) sans rien casser.
+
+**Pseudos des joueurs.** L'analyse n'en a pas besoin : dans les tables, chaque pseudo devient un
+identifiant propre au tournoi (`p0001`, `p0002`… dans l'ordre du classement), et les réponses brutes de
+l'API ne sont jamais publiées. C'est une pseudonymisation, pas un anonymat (les classements restent
+publics sur Limitless), mais les pseudos ne sont pas recopiés en masse et un joueur ne peut pas être
+suivi d'un tournoi à l'autre dans nos tables.
 
 ### Tables produites (`data/processed/`)
 
@@ -201,7 +220,8 @@ différer légèrement de l'écriture officielle, surtout pour les Méga X et Y.
 
 ## Interface
 
-`python -m ptcgp app` ouvre l'interface dans le navigateur (http://localhost:8501) :
+[En ligne](https://ptcgp-meta-analyzer.streamlit.app), ou en local avec `python -m ptcgp app`
+(http://localhost:8501) :
 
 - **Réglages** (colonne de gauche) : mode, période, extensions de ton deck, promos d'événement (en
   classé), format, extensions et cartes permises (dans un format spécial), tolérance.
@@ -221,10 +241,12 @@ différer légèrement de l'écriture officielle, surtout pour les Méga X et Y.
 - Les règles qui ne portent pas sur les extensions (types, Pokémon seulement, PV) ne sont pas détectées.
 - Les tournois Dual Deck sont écartés, alors que leurs appariements disent quel deck a joué chaque manche
   (18 tournois et 2 168 joueurs depuis Dual Fusion) : une piste pour plus tard.
+- Les chiffres de ce README datent du 21 novembre 2026 ; l'app, elle, suit la méta chaque semaine.
 
 ## Utilisation
 
 ```bash
+git clone https://github.com/narusly/ptcgp-meta-analyzer && cd ptcgp-meta-analyzer
 pip install -e ".[dev]"             # ou ".[app]" pour l'interface seule
 python -m ptcgp update              # cartes + tournois des 90 derniers jours + tables et formats
 python -m ptcgp build               # reconstruit les tables depuis le cache, sans réseau

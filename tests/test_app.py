@@ -51,3 +51,12 @@ def test_rules_mode_uses_the_format_and_its_permitted_cards(app):
     assert not app.exception
     ranking = app.dataframe[0].value.set_index("Deck")
     assert ranking.loc["Deck C", "Listes jouables"] == 9
+
+
+def test_online_app_downloads_the_published_tables(tmp_path, monkeypatch):
+    published = write_processed(with_format(make_data()), tmp_path / "branche-data" / "processed")
+    monkeypatch.setenv("PTCGP_PROCESSED", str(tmp_path / "absent"))  # comme sur Streamlit Cloud
+    monkeypatch.setenv("PTCGP_DATA_URL", published.as_uri())
+    at = AppTest.from_file(str(APP), default_timeout=120).run()
+    assert not at.exception and not at.error
+    assert any("mise à jour chaque semaine" in c.value for c in at.caption)
