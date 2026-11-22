@@ -650,7 +650,7 @@ def list_effects(model: Model, matchups: Matchups, data: Data, legal: pd.Series,
 
 
 def recommended_list(lists: pd.DataFrame, deck: str) -> tuple[pd.Series | None, pd.Series | None]:
-    """(liste conseillée, liste la plus jouée) d'un deck. La liste conseillée a le meilleur taux estimé
+    """(meilleure liste estimée, liste la plus jouée) d'un deck. La meilleure estimée a le meilleur taux
     parmi celles jouées par au moins ``MIN_LIST_PLAYERS`` joueurs ; à défaut, c'est la plus jouée."""
     rows = lists[lists["deck"] == deck]
     if rows.empty:
@@ -659,6 +659,38 @@ def recommended_list(lists: pd.DataFrame, deck: str) -> tuple[pd.Series | None, 
     eligible = rows[rows["eligible"]]
     best = eligible.sort_values("win_rate", ascending=False).iloc[0] if len(eligible) else popular
     return best, popular
+
+
+@dataclass
+class ListChoice:
+    """Liste conseillée d'un deck : la plus jouée, sauf si la meilleure estimée la bat nettement
+    (borne basse de l'intervalle à 90 % de l'écart au-dessus de 0). Entre deux listes d'un même deck,
+    les écarts sont presque toujours dans le bruit : la liste la plus jouée, éprouvée par bien plus de
+    joueurs, est alors le choix le plus sûr."""
+
+    estimated: pd.Series  # meilleur taux estimé parmi les listes jouées par au moins MIN_LIST_PLAYERS joueurs
+    popular: pd.Series  # la plus jouée à l'identique
+    gap: float  # taux estimé (meilleure estimée − plus jouée)
+    low: float
+    high: float
+
+    @property
+    def same(self) -> bool:
+        return self.estimated["signature"] == self.popular["signature"]
+
+    @property
+    def clear(self) -> bool:
+        """L'avance de la meilleure estimée est-elle nette ?"""
+        return not self.same and self.low > 0
+
+    @property
+    def chosen(self) -> pd.Series:
+        return self.estimated if self.clear else self.popular
+
+    @property
+    def other(self) -> pd.Series | None:
+        """L'autre liste candidate (None si les deux sont la même)."""
+        return None if self.same else (self.popular if self.clear else self.estimated)
 
 
 def list_gap(analysis: "Analysis", deck: str, a: tuple, b: tuple) -> tuple[float, float, float]:
@@ -900,11 +932,21 @@ class Analysis:
     since: str | None = None
     lists: pd.DataFrame | None = None  # taux estimé de chaque liste exacte (voir list_effects)
 
+    def list_choice(self, deck: str) -> ListChoice | None:
+        """Liste conseillée d'un deck candidat (voir ``ListChoice``)."""
+        if self.lists is None:
+            return None
+        estimated, popular = recommended_list(self.lists, deck)
+        if estimated is None:
+            return None
+        same = estimated["signature"] == popular["signature"]
+        gap = (0.0, 0.0, 0.0) if same else list_gap(self, deck, estimated["signature"], popular["signature"])
+        return ListChoice(estimated, popular, *gap)
+
     def recommended(self, deck: str) -> tuple[pd.Series | None, pd.Series | None]:
         """(liste conseillée, liste la plus jouée) d'un deck candidat."""
-        if self.lists is None:
-            return None, None
-        return recommended_list(self.lists, deck)
+        choice = self.list_choice(deck)
+        return (choice.chosen, choice.popular) if choice else (None, None)
 
 
 def analyze(

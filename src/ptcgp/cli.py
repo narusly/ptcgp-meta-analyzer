@@ -97,14 +97,17 @@ def _stats(args: argparse.Namespace) -> None:
     print(table.to_string(index=False))
 
     best = res.ranking.iloc[0]
-    chosen, popular = res.recommended(best["deck"])
+    choice = res.list_choice(best["deck"])
+    chosen = choice.chosen
     cards_, same, total = stats.deck_list(window, res.legal, best["deck"], res.allowed, chosen["signature"])
-    print(f"\nListe conseillée de {best['name_fr']} : meilleur taux estimé parmi les listes jouées par au moins "
-          f"{stats.MIN_LIST_PLAYERS} joueurs ({same} joueurs, {chosen['win_rate']:.1%} [{chosen['low']:.1%} ; {chosen['high']:.1%}])")
+    kind = "meilleur taux estimé, avance nette sur la plus jouée" if choice.clear else "la plus jouée à l'identique"
+    print(f"\nListe conseillée de {best['name_fr']} : {kind} ({same} joueurs, {chosen['win_rate']:.1%} "
+          f"[{chosen['low']:.1%} ; {chosen['high']:.1%}])")
     print(stats.list_text(best["name_fr"], cards_))
-    if chosen["signature"] != popular["signature"]:
-        gap, low, high = stats.list_gap(res, best["deck"], chosen["signature"], popular["signature"])
-        print(f"Écart avec la liste la plus jouée ({popular['players']} joueurs) : {gap * 100:+.1f} pt [{low * 100:+.1f} ; {high * 100:+.1f}]")
+    if not choice.same:
+        verdict = "nette" if choice.clear else "incertaine"
+        print(f"Meilleure estimée ({choice.estimated['players']} joueurs) contre la plus jouée ({choice.popular['players']} joueurs) : "
+              f"{choice.gap * 100:+.1f} pt [{choice.low * 100:+.1f} ; {choice.high * 100:+.1f}], avance {verdict}")
 
     if args.validate:
         dates = window.tournaments["date"].sort_values().to_numpy()

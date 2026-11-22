@@ -240,10 +240,10 @@ def sidebar(data: stats.Data) -> dict:
 
 
 LIST_NOTE = (
-    "Liste conseillée : celle qui a le meilleur taux de victoire estimé, à adversaire égal, parmi les listes "
-    f"jouées à l'identique par au moins {stats.MIN_LIST_PLAYERS} joueurs. Sur des tournois que le modèle "
-    "n'avait pas vus, les effets des cartes n'améliorent pas la prédiction : entre deux listes d'un même deck, "
-    "l'écart reste du même ordre que le hasard."
+    "Liste conseillée : la plus jouée à l'identique, sauf si la liste au meilleur taux de victoire estimé "
+    f"(à adversaire égal, parmi celles jouées par au moins {stats.MIN_LIST_PLAYERS} joueurs) la bat nettement. "
+    "Sur des tournois que le modèle n'avait pas vus, les effets des cartes n'améliorent pas la prédiction : "
+    "entre deux listes d'un même deck, l'écart reste presque toujours du même ordre que le hasard."
 )
 
 
@@ -273,40 +273,51 @@ def show_list(res: stats.Analysis, deck: str, signature: tuple, name: str, key: 
     return cards
 
 
-def explain_choice(res: stats.Analysis, deck: str, best: pd.Series, popular: pd.Series, cards: pd.DataFrame) -> None:
-    """Pourquoi cette liste : joueurs, taux estimé, et écart avec la liste la plus jouée."""
-    rate = f"taux estimé {pct(best['win_rate'])} [{pct(best['low'])} – {pct(best['high'])}]"
-    if best["signature"] == popular["signature"]:
-        st.caption(f"Jouée à l'identique par {best['players']} joueurs ({rate}). C'est aussi la liste la plus jouée.")
+def changes_text(res: stats.Analysis, deck: str, a: tuple, b: tuple) -> str:
+    """Cartes de la liste a qui diffèrent de la liste b : « +1 Toudoudou (A4a-059), −1 Tylton (B1-196) »."""
+    ta, _, _ = stats.deck_list(res.data, res.legal, deck, res.allowed, a)
+    tb, _, _ = stats.deck_list(res.data, res.legal, deck, res.allowed, b)
+    names = {**dict(zip(tb["card_id"], tb["name_fr"])), **dict(zip(ta["card_id"], ta["name_fr"]))}
+    prints = {**dict(zip(tb["card_id"], tb["print"])), **dict(zip(ta["card_id"], ta["print"]))}
+    return ", ".join(f"{'+' if v > 0 else '−'}{abs(v)} {names.get(c, c)} ({prints.get(c, '')})"
+                     for c, v in stats.list_difference(a, b).items())
+
+
+def explain_choice(res: stats.Analysis, deck: str, choice: stats.ListChoice) -> None:
+    """Pourquoi cette liste : joueurs, taux estimé, et comparaison avec l'autre liste candidate."""
+    chosen = choice.chosen
+    rate = f"taux estimé {pct(chosen['win_rate'])} [{pct(chosen['low'])} – {pct(chosen['high'])}]"
+    played = f"Jouée à l'identique par {chosen['players']} joueurs ({rate})."
+    if choice.same:
+        st.caption(f"{played} C'est la liste la plus jouée et aussi celle au meilleur taux estimé.")
         return
-    gap, low, high = stats.list_gap(res, deck, best["signature"], popular["signature"])
-    other, _, _ = stats.deck_list(res.data, res.legal, deck, res.allowed, popular["signature"])
-    names = {**dict(zip(other["card_id"], other["name_fr"])), **dict(zip(cards["card_id"], cards["name_fr"]))}
-    prints = {**dict(zip(other["card_id"], other["print"])), **dict(zip(cards["card_id"], cards["print"]))}
-    changes = ", ".join(f"{'+' if v > 0 else '−'}{abs(v)} {names.get(c, c)} ({prints.get(c, '')})"
-                        for c, v in stats.list_difference(best["signature"], popular["signature"]).items())
-    verdict = "écart net" if low > 0 else "écart incertain"
     pts = lambda x: f"{x * 100:+.1f}".replace(".", ",")
-    st.caption(
-        f"Jouée à l'identique par {best['players']} joueurs ({rate}). Par rapport à la liste la plus jouée "
-        f"({popular['players']} joueurs) : {pts(gap)} pt [{pts(low)} ; {pts(high)}], {verdict}. "
-        f"Cartes qui changent : {changes}."
-    )
+    interval = f"{pts(choice.gap)} pt [{pts(choice.low)} ; {pts(choice.high)}]"
+    if choice.clear:
+        st.caption(
+            f"{played} Elle bat nettement la liste la plus jouée ({choice.popular['players']} joueurs) : {interval}. "
+            f"Cartes qui changent : {changes_text(res, deck, choice.estimated['signature'], choice.popular['signature'])}."
+        )
+    else:
+        st.caption(
+            f"{played} C'est la plus jouée. La liste au meilleur taux estimé ({choice.estimated['players']} joueurs, "
+            f"onglet suivant) ne ferait que {interval} : écart incertain, on garde la liste la plus éprouvée."
+        )
 
 
 def recommended_deck(res: stats.Analysis) -> None:
     """En haut de page : le meilleur deck pour ces réglages et sa liste complète."""
     top = res.ranking.iloc[0]
-    best, popular = res.recommended(top["deck"])
+    choice = res.list_choice(top["deck"])
     st.subheader("Ton deck recommandé")
     st.markdown(f"#### {top['name_fr']}")
     cols = st.columns(3)
     cols[0].metric("Victoire attendue", pct(top["win_rate"]), help=f"Intervalle à 90 % : {pct(top['low'])} – {pct(top['high'])}")
     cols[1].metric("Chances d'être le meilleur", pct(top["p_best"], 0))
-    cols[2].metric("Joueurs avec cette liste", f"{best['players']}" if best is not None else "–")
-    if best is not None:
-        cards = show_list(res, top["deck"], best["signature"], top["name_fr"], key="top")
-        explain_choice(res, top["deck"], best, popular, cards)
+    cols[2].metric("Joueurs avec cette liste", f"{choice.chosen['players']}" if choice else "–")
+    if choice:
+        show_list(res, top["deck"], choice.chosen["signature"], top["name_fr"], key="top")
+        explain_choice(res, top["deck"], choice)
     st.caption(LIST_NOTE)
 
 
@@ -429,16 +440,24 @@ def main() -> None:
         )
         st.caption("Peu de manches observées : le matchup est tiré vers la force globale des deux decks (Bradley-Terry).")
     with right:
-        best, popular = res.recommended(deck)
-        tab_best, tab_popular, tab_cards = st.tabs(["Liste conseillée", "La plus jouée", "Effet des cartes"])
+        choice = res.list_choice(deck)
+        other_label = "Meilleure estimée" if choice is None or not choice.clear else "La plus jouée"
+        tab_best, tab_other, tab_cards = st.tabs(["Liste conseillée", other_label, "Effet des cartes"])
         with tab_best:
-            if best is not None:
-                cards = show_list(res, deck, best["signature"], row["name_fr"], key=f"best_{deck}")
-                explain_choice(res, deck, best, popular, cards)
-        with tab_popular:
-            if popular is not None:
-                st.caption(f"{popular['players']} joueurs l'ont jouée à l'identique ; taux estimé {pct(popular['win_rate'])}.")
-                show_list(res, deck, popular["signature"], row["name_fr"], key=f"popular_{deck}")
+            if choice:
+                show_list(res, deck, choice.chosen["signature"], row["name_fr"], key=f"best_{deck}")
+                explain_choice(res, deck, choice)
+        with tab_other:
+            if choice is None or choice.other is None:
+                st.caption("La liste la plus jouée est aussi celle au meilleur taux estimé : pas d'autre candidate.")
+            else:
+                other = choice.other
+                st.caption(
+                    f"{other['players']} joueurs l'ont jouée à l'identique ; taux estimé {pct(other['win_rate'])} "
+                    f"[{pct(other['low'])} – {pct(other['high'])}]. Cartes qui changent par rapport à la liste conseillée : "
+                    f"{changes_text(res, deck, other['signature'], choice.chosen['signature'])}."
+                )
+                show_list(res, deck, other["signature"], row["name_fr"], key=f"other_{deck}")
         with tab_cards:
             effects = stats.card_table(res, deck)
             if effects.empty:

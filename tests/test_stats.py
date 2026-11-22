@@ -208,3 +208,14 @@ def test_list_text_lists_all_cards_with_versions():
     text = stats.list_text("Deck", cards)
     assert text.startswith("Deck : 5 cartes") and "2× Mentali (B3a-020)" in text and "Dresseurs (2)" in text
     assert "← hors de ta réserve" in text
+
+
+def test_the_most_played_list_wins_unless_the_best_estimate_is_clearly_ahead():
+    estimated = pd.Series({"signature": ("tech",), "players": 9, "win_rate": 0.57})
+    popular = pd.Series({"signature": ("base",), "players": 161, "win_rate": 0.565})
+    unsure = stats.ListChoice(estimated, popular, gap=0.004, low=-0.027, high=0.035)
+    assert not unsure.clear and unsure.chosen is popular and unsure.other is estimated
+    clear = stats.ListChoice(estimated, popular, gap=0.05, low=0.01, high=0.09)
+    assert clear.clear and clear.chosen is estimated and clear.other is popular
+    same = stats.ListChoice(popular, popular, 0.0, 0.0, 0.0)
+    assert same.same and same.chosen is popular and same.other is None

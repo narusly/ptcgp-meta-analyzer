@@ -36,7 +36,8 @@ def test_ranked_mode_shows_the_recommended_deck_ranking_matchups_and_lists(app):
     assert "Recherches Professorales" in set(top_list["Carte"]) and top_list["Nb"].sum() == 4
     assert any("cartes" in c.value and "×" in c.value for c in app.code)  # liste à copier
     assert len(table(app, "Adversaire")) == 2  # matchups contre les deux autres decks
-    assert [t.label for t in app.tabs] == ["Liste conseillée", "La plus jouée", "Effet des cartes"]
+    labels = [t.label for t in app.tabs]
+    assert labels[0] == "Liste conseillée" and labels[1] in ("Meilleure estimée", "La plus jouée") and labels[2] == "Effet des cartes"
     assert any("Limitless" in c.value for c in app.caption)  # crédits sur la page
 
 
