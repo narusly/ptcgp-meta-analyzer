@@ -9,6 +9,7 @@ from ptcgp.cards import (
     db_set_code,
     derive_french,
     plausible_french,
+    pokepedia_names,
     prints_table,
     sets_table,
     shop_card_ids,
@@ -106,3 +107,27 @@ def test_ex_suffix_and_derived_names():
 def test_shop_cards_are_promo_a_1_to_7():
     prints = pd.DataFrame({"card_id": ["TR_1", "TR_2", "PK_9"], "set": ["PROMO-A", "A2b", "PROMO-A"], "number": [5, 111, 9]})
     assert shop_card_ids(prints) == {"TR_1"}
+
+
+def test_pokepedia_names_come_from_the_card_links_of_the_set_page():
+    page = {
+        "title": "Fusion Double",
+        "wikitext": (
+            "| 123<small>/131</small>\n| [[Évoluroc (Fusion Double 123)|Évoluroc]]\n|-\n"
+            "| 005<small>/131</small>\n| [[Noadkoko d'Alola-ex (Fusion Double 005)|Noadkoko <small>d'Alola</small>]]{{Symbole JCC|ex JCCP}}\n|-\n"
+            "Voir aussi [[Pikachu (Promo-A 001)|Pikachu]]"  # carte d'une autre extension : ignorée
+        ),
+    }
+    assert pokepedia_names(page) == {123: "Évoluroc", 5: "Noadkoko d'Alola-ex"}
+
+
+def test_pokepedia_takes_priority_over_tcgdex_and_the_database():
+    raw = CARDS + [{"set": "C1", "number": 123, "name": "Eviolite", "rarity": "C", "image": "cTR_10_001700_00_SHINKANOKISEKI_C.webp", "type": "tool"}]
+    tcgdex = {"B3a": {"cards": [{"localId": "020", "name": "Mentali (TCGdex)"}]}}
+    pokepedia = {
+        "C1": {"title": "Fusion Double", "wikitext": "[[Évoluroc (Fusion Double 123)|Évoluroc]]"},
+        "B3a": {"title": "Propulsion Paradoxe", "wikitext": "[[Mentali (Propulsion Paradoxe 020)|Mentali]]"},
+    }
+    prints = prints_table(raw, None, tcgdex, pokepedia).set_index(["set", "number"])
+    assert prints.loc[("C1", 123), "name_fr"] == "Évoluroc"
+    assert prints.loc[("B3a", 20), "name_fr"] == "Mentali"

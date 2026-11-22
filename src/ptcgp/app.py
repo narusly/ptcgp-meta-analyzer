@@ -33,7 +33,8 @@ CLASSE, REGLES = "Classé", "Règles pour tout le monde"
 CREDITS = (
     "Données de tournois : [Limitless TCG](https://play.limitlesstcg.com). Cartes : "
     "[flibustier/pokemon-tcg-pocket-database](https://github.com/flibustier/pokemon-tcg-pocket-database) (MIT), "
-    "noms français : [TCGdex](https://tcgdex.dev). Projet non officiel, sans lien avec The Pokémon Company, "
+    "noms français : [Poképédia](https://www.pokepedia.fr) (CC BY-NC-SA 3.0) et [TCGdex](https://tcgdex.dev). "
+    "Projet non officiel, sans lien avec The Pokémon Company, "
     "Creatures, GAME FREAK ou DeNA."
 )
 

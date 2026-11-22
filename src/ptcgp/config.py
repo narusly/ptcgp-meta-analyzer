@@ -16,7 +16,9 @@ USER_AGENT = "ptcgp-meta-analyzer/0.1 (projet open source de statistiques)"
 # Base de cartes : https://github.com/flibustier/pokemon-tcg-pocket-database (licence MIT)
 CARDS_REPO = "flibustier/pokemon-tcg-pocket-database"
 
-# Noms français des cartes : https://tcgdex.dev (API publique, sans clé ; série Pocket « tcgp »)
+# Noms français des cartes : Poképédia (API MediaWiki, licence CC BY-NC-SA 3.0), une page par extension
+# Pocket ; à défaut https://tcgdex.dev (API publique, sans clé ; série Pocket « tcgp », jusqu'à B2a)
+POKEPEDIA_API = "https://www.pokepedia.fr/api.php"
 TCGDEX_API = "https://api.tcgdex.net/v2/fr"
 TCGDEX_SERIES = "tcgp"
 

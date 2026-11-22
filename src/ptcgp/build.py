@@ -25,7 +25,9 @@ MATCH_COLUMNS = ["tournament_id", "phase", "round", "player1", "player2", "resul
 def build_cards(raw_cards: Path, out: Path) -> dict[str, pd.DataFrame]:
     data = cardsmod.load(raw_cards)
     sets = cardsmod.sets_table(data["sets.json"])
-    prints = cardsmod.prints_table(data["cards.extra.json"], data.get(cardsmod.FRENCH_FILE), data.get(cardsmod.TCGDEX_DIR))
+    prints = cardsmod.prints_table(
+        data["cards.extra.json"], data.get(cardsmod.FRENCH_FILE), data.get(cardsmod.TCGDEX_DIR), data.get(cardsmod.POKEPEDIA_DIR)
+    )
     cards = cardsmod.cards_table(prints, sets)
     out.mkdir(parents=True, exist_ok=True)
     sets.to_csv(out / "sets.csv", index=False)

@@ -9,7 +9,7 @@ description = "Méta de Pokémon TCG Pocket à partir des tournois Limitless : p
 authors = [{ name = "Maxime Fruntes" }]
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["pandas>=2.1", "numpy>=1.26"]
+dependencies = ["pandas>=2.1", "numpy>=1.26", "certifi"]
 
 [project.optional-dependencies]
 app = ["streamlit>=1.50", "altair>=5"]

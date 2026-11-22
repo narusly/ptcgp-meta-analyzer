@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -17,6 +18,16 @@ from typing import Any, Callable
 from .config import USER_AGENT
 
 _RATELIMIT = re.compile(r"\br=(\d+)\s*;\s*t=(\d+)")
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """Certificats à jour de certifi (Mozilla) si disponibles : le magasin de Windows ne reconstruit pas
+    toujours les chaînes récentes de Let's Encrypt (pokepedia.fr). La vérification reste complète."""
+    try:
+        import certifi
+    except ImportError:
+        return ssl.create_default_context()
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 def parse_ratelimit(value: str | None) -> tuple[int, int] | None:
@@ -42,6 +53,7 @@ class HttpClient:
         self._sleep = sleep
         self._clock = clock
         self._last_request: float | None = None
+        self._context = _ssl_context()
         self.remaining: int | None = None
         self.reset_at: float | None = None
         self.requests = 0
@@ -79,7 +91,7 @@ class HttpClient:
             self.requests += 1
             request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
             try:
-                with urllib.request.urlopen(request, timeout=60) as response:
+                with urllib.request.urlopen(request, timeout=60, context=self._context) as response:
                     self._note_limits(response.headers)
                     return response.read()
             except urllib.error.HTTPError as err:

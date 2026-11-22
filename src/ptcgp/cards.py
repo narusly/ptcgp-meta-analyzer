@@ -1,7 +1,8 @@
 """Base de cartes : impressions, cartes et extensions.
 
 Source : https://github.com/flibustier/pokemon-tcg-pocket-database (licence MIT). Noms français :
-TCGdex (https://tcgdex.dev, jusqu'à B2a), complété par les traductions de la base (PROMO-B, B4).
+Poképédia (https://www.pokepedia.fr, licence CC BY-NC-SA 3.0), qui liste toutes les cartes de chaque
+extension Pocket ; à défaut TCGdex (https://tcgdex.dev, jusqu'à B2a), puis les traductions de la base.
 
 Une même carte peut être imprimée plusieurs fois (illustrations alternatives, rééditions dans un autre
 pack). Toutes ces impressions jouent pareil. Pour les regrouper, on utilise l'identifiant interne du
@@ -15,18 +16,22 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 from pathlib import Path
 from typing import Callable
 
 import pandas as pd
 
-from .config import CARDS_REPO, LIMITLESS_SET_ALIASES, SHOP_PRINTS, TCGDEX_API, TCGDEX_SERIES
+from .config import CARDS_REPO, LIMITLESS_SET_ALIASES, POKEPEDIA_API, SHOP_PRINTS, TCGDEX_API, TCGDEX_SERIES
 from .http import HttpClient
 
 IMAGE_ID = re.compile(r"^c([A-Z]+)_\d+_(\d{6})_\d{2}_")
 CARD_FILES = ("cards.extra.json", "sets.json")
 FRENCH_FILE = "cards.fr.json"
 TCGDEX_DIR = "tcgdex_fr"
+POKEPEDIA_DIR = "pokepedia"
+# Lien vers la page d'une carte dans la liste d'une extension : [[Évoluroc (Fusion Double 123)|…]]
+_POKEPEDIA_LINK = re.compile(r"\[\[([^\[\]|]+?) \(([^()\[\]|]+?) (\d{3})\)\|")
 
 
 def card_id_from_image(image: str) -> str:
@@ -71,7 +76,44 @@ def download(client: HttpClient, dest: Path, log: Callable[[str], None] = print)
         data[TCGDEX_DIR] = download_tcgdex(client, dest / TCGDEX_DIR)
     except Exception as err:  # noms français facultatifs : on garde ceux déjà en cache
         log(f"Noms français de TCGdex indisponibles ({err}) : cache précédent conservé")
+    alt = {db_set_code(k): v.get("name") for k, v in (data.get(TCGDEX_DIR) or {}).items()}  # autre nom français (TCGdex)
+    data[POKEPEDIA_DIR] = download_pokepedia(HttpClient(min_interval=1.0, log=log), dest / POKEPEDIA_DIR, data["sets.json"], log, alt)
     return data
+
+
+def download_pokepedia(client: HttpClient, dest: Path, sets_json: dict, log: Callable[[str], None] = print,
+                       alt_titles: dict[str, str] | None = None) -> dict[str, dict]:
+    """Page Poképédia de chaque extension (une requête par seconde) : son tableau « Liste des cartes »
+    donne le nom français officiel de chaque carte. On essaie le nom français de la base, puis celui de
+    TCGdex (« Gardiens Astraux » pour A3). Une page introuvable garde sa version en cache."""
+    dest.mkdir(parents=True, exist_ok=True)
+    out = {}
+    for code, title in ((s["code"], (s.get("name") or {}).get("fr")) for group in sets_json.values() for s in group):
+        titles = list(dict.fromkeys(t.replace("’", "'") for t in (title, (alt_titles or {}).get(code)) if t))
+        data = {}
+        for candidate in titles:
+            query = {"action": "parse", "page": candidate, "prop": "wikitext", "redirects": 1, "format": "json"}
+            try:
+                data = client.get_json(f"{POKEPEDIA_API}?{urllib.parse.urlencode(query)}")
+            except Exception as err:
+                log(f"Poképédia indisponible pour {code} ({err})")
+                data = {}
+            if "parse" in data:
+                break
+        if "parse" not in data:
+            if titles:
+                log(f"Pas de page Poképédia pour {code} ({', '.join(titles)})")
+            continue
+        page = {"title": data["parse"]["title"], "wikitext": data["parse"]["wikitext"]["*"]}
+        (dest / f"{code}.json").write_text(json.dumps(page, ensure_ascii=False), encoding="utf-8")
+        out[code] = page
+    return out
+
+
+def pokepedia_names(page: dict) -> dict[int, str]:
+    """Numéro → nom français des cartes de la liste d'une extension (liens vers les pages des cartes)."""
+    return {int(n): clean_name(name) for name, set_title, n in _POKEPEDIA_LINK.findall(page.get("wikitext", ""))
+            if set_title == page.get("title")}
 
 
 def download_tcgdex(client: HttpClient, dest: Path) -> dict[str, dict]:
@@ -90,9 +132,9 @@ def load(dest: Path) -> dict:
     data = {name: json.loads((dest / name).read_text(encoding="utf-8")) for name in CARD_FILES}
     if (dest / FRENCH_FILE).exists():
         data[FRENCH_FILE] = json.loads((dest / FRENCH_FILE).read_text(encoding="utf-8"))
-    tcgdex = dest / TCGDEX_DIR
-    if tcgdex.exists():
-        data[TCGDEX_DIR] = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(tcgdex.glob("*.json"))}
+    for folder in (TCGDEX_DIR, POKEPEDIA_DIR):
+        if (dest / folder).exists():
+            data[folder] = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted((dest / folder).glob("*.json"))}
     return data
 
 
@@ -129,10 +171,11 @@ def derive_french(english: str, species: dict[str, str]) -> str | None:
     return name + ("-ex" if m.group("ex") else "")
 
 
-def french_print_names(prints: pd.DataFrame, cards_fr: list[dict] | None, tcgdex: dict[str, dict] | None) -> pd.Series:
+def french_print_names(prints: pd.DataFrame, cards_fr: list[dict] | None, tcgdex: dict[str, dict] | None,
+                       pokepedia: dict[str, dict] | None = None) -> pd.Series:
     """Nom français de chaque impression quand une source le donne (sinon NaN), aligné sur ``prints``.
 
-    Ordre de priorité : TCGdex, puis les traductions de la base qui passent ``plausible_french``.
+    Ordre de priorité : Poképédia, TCGdex, puis les traductions de la base qui passent ``plausible_french``.
     """
     names: dict[tuple[str, int], str] = {}
     english = dict(zip(zip(prints["set"], prints["number"]), prints["name"]))
@@ -150,6 +193,10 @@ def french_print_names(prints: pd.DataFrame, cards_fr: list[dict] | None, tcgdex
                 # TCGdex écrit « PalkiaForme Originelle » : on rétablit l'espace manquant
                 name = re.sub(r"([a-zàâçéèêëîïôûùüÿœ])([A-Z])", r"\1 \2", clean_name(c["name"]))
                 names[key] = _with_ex(english[key], name)
+    for code, page in (pokepedia or {}).items():
+        for number, name in pokepedia_names(page).items():
+            if (code, number) in english:
+                names[(code, number)] = _with_ex(english[(code, number)], name)
     return pd.Series([names.get(k) for k in zip(prints["set"], prints["number"])], index=prints.index, dtype=object)
 
 
@@ -172,7 +219,8 @@ def sets_table(sets_json: dict) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values(["release_date", "set"], ignore_index=True)
 
 
-def prints_table(cards_json: list[dict], cards_fr: list[dict] | None = None, tcgdex: dict[str, dict] | None = None) -> pd.DataFrame:
+def prints_table(cards_json: list[dict], cards_fr: list[dict] | None = None, tcgdex: dict[str, dict] | None = None,
+                 pokepedia: dict[str, dict] | None = None) -> pd.DataFrame:
     """Une ligne par impression (extension + numéro), avec l'identifiant de la carte et son nom français."""
     rows = [
         {
@@ -195,7 +243,7 @@ def prints_table(cards_json: list[dict], cards_fr: list[dict] | None = None, tcg
     df = pd.DataFrame(rows)
     for col in ("hp", "retreat_cost"):
         df[col] = df[col].astype("Int64")
-    df.insert(df.columns.get_loc("name") + 1, "name_fr", french_print_names(df, cards_fr, tcgdex))
+    df.insert(df.columns.get_loc("name") + 1, "name_fr", french_print_names(df, cards_fr, tcgdex, pokepedia))
     return df
 
 

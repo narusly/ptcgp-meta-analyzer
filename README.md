@@ -40,7 +40,8 @@ automatiquement chaque mardi.
 |---|---|---|
 | [Limitless](https://play.limitlesstcg.com) | Tournois Pocket : decklists, archétypes, résultats de chaque match | [API publique](https://docs.limitlesstcg.com/developer), sans clé (50 requêtes / 5 min) |
 | [flibustier/pokemon-tcg-pocket-database](https://github.com/flibustier/pokemon-tcg-pocket-database) | Toutes les cartes et extensions | Fichiers JSON, licence MIT |
-| [TCGdex](https://tcgdex.dev) | Noms français des cartes (jusqu'à B2a) | API publique, sans clé |
+| [Poképédia](https://www.pokepedia.fr) | Noms français officiels de toutes les cartes Pocket | API MediaWiki, licence CC BY-NC-SA 3.0 |
+| [TCGdex](https://tcgdex.dev) | Noms français des cartes (jusqu'à B2a), en secours | API publique, sans clé |
 
 Trois formats Limitless sont téléchargés : le **standard**, **CUSTOM** (règles maison) et **NOEX** (sans
 ex), soit 323, 125 et 8 tournois du 23 août au 18 novembre 2026. Un tournoi n'est retenu qu'une fois
@@ -239,14 +240,13 @@ restreinte), « Tiny Titans » (Pokémon de base à 100 PV maximum).
 
 ## Noms français
 
-Les noms viennent de TCGdex (A1 à B2a et Promo-A), puis des traductions de la base de cartes quand elles
-sont plausibles : celle-ci contient des erreurs (Mega Sceptile ex traduit « Feunnec ») et des noms
-anglais recollés (« GalarianMeowth »), écartés. Une carte prend aussi le nom d'une autre impression ou
-d'une autre carte au même nom anglais. À défaut, le nom est reconstruit à partir de l'espèce :
-« Mega Greninja ex » donne « Méga-Amphinobi-ex », « Alolan Vulpix » donne « Goupix d'Alola ». Au total,
-87 % des cartes ont un nom français ; les autres, surtout des cartes récentes (C1), gardent leur nom
-anglais. Les noms reconstruits suivent les conventions de la base (« Méga-Absol-ex ») mais peuvent
-différer légèrement de l'écriture officielle, surtout pour les Méga X et Y.
+Toutes les cartes ont leur nom français officiel, avec la version à chercher en jeu. La source principale
+est [Poképédia](https://www.pokepedia.fr) : sa page de chaque extension Pocket liste toutes les cartes,
+numéro par numéro (« Évoluroc (Fusion Double 123) »). Les pages sont relues chaque semaine par l'API
+MediaWiki (une requête par seconde). À défaut viennent TCGdex (A1 à B2a), les traductions plausibles de
+la base de cartes (elle contient des erreurs, comme Mega Sceptile ex traduit « Feunnec », écartées), puis
+une reconstruction à partir de l'espèce (« Mega Greninja ex » → « Méga-Amphinobi-ex »). Sur les 2 116
+impressions que Poképédia et TCGdex nomment tous deux, une seule diffère (Debugant / Débugant).
 
 ## Interface
 
@@ -298,5 +298,6 @@ pytest -q
 
 Données de tournois : [Limitless TCG](https://play.limitlesstcg.com). Données de cartes :
 [flibustier/pokemon-tcg-pocket-database](https://github.com/flibustier/pokemon-tcg-pocket-database).
-Noms français : [TCGdex](https://tcgdex.dev). Projet non officiel, sans lien avec The Pokémon Company,
+Noms français : [Poképédia](https://www.pokepedia.fr) (licence CC BY-NC-SA 3.0) et [TCGdex](https://tcgdex.dev).
+Projet non officiel, sans lien avec The Pokémon Company,
 Creatures, GAME FREAK ou DeNA.
