@@ -59,7 +59,8 @@ def ranking_figure(data: stats.Data, path: Path, fmt: str = "C1", top: int = 8) 
     standard = stats.analyze(data)
     special = stats.analyze(data, format_id=fmt)
     label = data.formats.set_index("format_id").loc[fmt, "label"]
-    fig, (left, right) = plt.subplots(1, 2, figsize=(12.5, 4.8), gridspec_kw={"wspace": 0.75})
+    # Panneaux l'un sous l'autre : la figure reste lisible sur une page étroite (portfolio, téléphone)
+    fig, (left, right) = plt.subplots(2, 1, figsize=(7.5, 9.2), gridspec_kw={"hspace": 0.55})
     n_std, n_fmt = len(standard.data.tournaments), len(special.data.tournaments)
     players = int(special.data.tournaments["players"].sum())
     ranking_panel(left, standard.ranking, "Classé : méta des tournois standard",
