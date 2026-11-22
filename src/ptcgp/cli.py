@@ -135,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("build", help="construire les tables de data/processed (et détecter les formats)")
     sub.add_parser("formats", help="formats à réserve restreinte détectés dans les tournois CUSTOM et NOEX")
     sub.add_parser("app", help="lancer l'interface Streamlit en local")
+    sub.add_parser("figures", help="figure du README (reports/figures/classement.png)")
     p = sub.add_parser("stats", help="classement des decks")
     p.add_argument("--format", default="standard", help="format (défaut : standard, pour le classé ; voir la commande formats)")
     p.add_argument("--sets", help="extensions autorisées pour son deck, séparées par des virgules (défaut : toutes)")
@@ -153,6 +154,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "app":
         return _app()
+    if args.command == "figures":
+        from . import stats
+        from .config import ROOT
+        from .figures import ranking_figure
+
+        print(ranking_figure(stats.load(PROCESSED), ROOT / "reports" / "figures" / "classement.png"))
+        return 0
 
     if args.command in ("cards", "update"):
         source = cards.download(HttpClient(), RAW_CARDS)

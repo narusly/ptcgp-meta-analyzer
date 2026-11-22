@@ -12,6 +12,8 @@ formats à règles spéciales (« Fusion Double seule », « De A1 à A3b »…)
 **[Ouvrir l'app](https://ptcgp-meta-analyzer.streamlit.app)** (consultable sur téléphone), mise à jour
 automatiquement chaque mardi.
 
+![Classement des decks en classé et dans le format « Fusion Double seule », avec intervalles à 90 %](reports/figures/classement.png)
+
 ## En bref (méta du 29 octobre au 18 novembre 2026, 69 tournois, 23 338 manches)
 
 | Deck (nom Limitless) | Victoire attendue en classé [IC 90 %] | P(meilleur deck) | Popularité |
@@ -257,6 +259,7 @@ python -m ptcgp stats --event-promos                # avec les promos d'événem
 python -m ptcgp formats             # formats à règles spéciales détectés
 python -m ptcgp stats --format C1   # classement dans le format « Fusion Double seule »
 python -m ptcgp stats --validate    # test sur les tournois les plus récents
+python -m ptcgp figures             # figure du README (reports/figures/classement.png)
 pytest -q
 ```
 
