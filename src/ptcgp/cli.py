@@ -97,10 +97,14 @@ def _stats(args: argparse.Namespace) -> None:
     print(table.to_string(index=False))
 
     best = res.ranking.iloc[0]
-    cards_, same, total = stats.deck_list(window, res.legal, best["deck"], res.allowed)
-    print(f"\nListe la plus jouée de {best['name_fr']} ({same} joueurs sur {total} listes jouables) :")
-    for r in cards_.itertuples():
-        print(f"  {r.count}x {r.name_fr:<30} {r.print}" + ("" if r.available else "   <- hors de ta réserve"))
+    chosen, popular = res.recommended(best["deck"])
+    cards_, same, total = stats.deck_list(window, res.legal, best["deck"], res.allowed, chosen["signature"])
+    print(f"\nListe conseillée de {best['name_fr']} : meilleur taux estimé parmi les listes jouées par au moins "
+          f"{stats.MIN_LIST_PLAYERS} joueurs ({same} joueurs, {chosen['win_rate']:.1%} [{chosen['low']:.1%} ; {chosen['high']:.1%}])")
+    print(stats.list_text(best["name_fr"], cards_))
+    if chosen["signature"] != popular["signature"]:
+        gap, low, high = stats.list_gap(res, best["deck"], chosen["signature"], popular["signature"])
+        print(f"Écart avec la liste la plus jouée ({popular['players']} joueurs) : {gap * 100:+.1f} pt [{low * 100:+.1f} ; {high * 100:+.1f}]")
 
     if args.validate:
         dates = window.tournaments["date"].sort_values().to_numpy()
@@ -112,6 +116,10 @@ def _stats(args: argparse.Namespace) -> None:
         print("Écart de perte logarithmique par manche du modèle retenu [IC 95 % par bootstrap sur les tournois] :")
         for name, (gap, low, high) in a["gaps"].items():
             print(f"  contre {name:<22} {gap:+.4f} [{low:+.4f} ; {high:+.4f}]")
+        h = stats.card_holdout(window, split)
+        print(f"Effets des cartes (τ = {h['tau']:.3f} logit par exemplaire), mêmes tournois de test ({h['games']:.0f} manches) :")
+        print(f"  perte logarithmique {h['base']:.4f} sans les cartes, {h['cards']:.4f} avec ; "
+              f"écart {h['gap']:+.4f} [{h['low']:+.4f} ; {h['high']:+.4f}]")
 
 
 def _app() -> int:

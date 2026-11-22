@@ -21,14 +21,22 @@ def app(tmp_path, monkeypatch):
     return at
 
 
-def test_ranked_mode_shows_the_ranking_matchups_and_list(app):
+def table(at, column: str, nth: int = 0):
+    """Le n-ième tableau de la page qui a cette colonne."""
+    return [d.value for d in at.dataframe if column in d.value.columns][nth]
+
+
+def test_ranked_mode_shows_the_recommended_deck_ranking_matchups_and_lists(app):
     assert not app.exception
-    ranking = app.dataframe[0].value
+    assert [s.value for s in app.subheader] == ["Ton deck recommandé", "Classement", "Détail d'un deck"]
+    ranking = table(app, "Victoire attendue")
     assert set(ranking["Deck"]) == {"Deck A", "Deck B", "Deck C"}
     assert ranking["Victoire attendue"].between(0, 100).all()
-    assert [s.value for s in app.subheader] == ["Classement", "Détail d'un deck"]
-    assert len(app.dataframe[1].value) == 2  # matchups contre les deux autres decks
-    assert "Recherches Professorales" in set(app.dataframe[2].value["Carte"])
+    top_list = table(app, "Carte")  # liste complète du deck recommandé, en haut de page
+    assert "Recherches Professorales" in set(top_list["Carte"]) and top_list["Nb"].sum() == 4
+    assert any("cartes" in c.value and "×" in c.value for c in app.code)  # liste à copier
+    assert len(table(app, "Adversaire")) == 2  # matchups contre les deux autres decks
+    assert [t.label for t in app.tabs] == ["Liste conseillée", "La plus jouée", "Effet des cartes"]
     assert any("Limitless" in c.value for c in app.caption)  # crédits sur la page
 
 
@@ -36,7 +44,7 @@ def test_ranked_mode_with_a_single_set_filters_your_deck_only(app):
     app.sidebar.toggle[0].set_value(False).run()
     app.sidebar.multiselect[0].set_value(["C1"]).run()
     assert not app.exception
-    decks = set(app.dataframe[0].value["Deck"])
+    decks = set(table(app, "Victoire attendue")["Deck"])
     assert "Deck A" not in decks and "Deck B" in decks  # Alpha n'existe qu'en B1
 
 
@@ -49,7 +57,7 @@ def test_rules_mode_uses_the_format_and_its_permitted_cards(app):
     assert cards.value == ["PK_4"]  # la promo d'événement jouée dans ce format
     cards.set_value([]).run()  # retirer la carte : seules les listes C sans elle comptent
     assert not app.exception
-    ranking = app.dataframe[0].value.set_index("Deck")
+    ranking = table(app, "Victoire attendue").set_index("Deck")
     assert ranking.loc["Deck C", "Listes jouables"] == 9
 
 

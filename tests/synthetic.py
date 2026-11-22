@@ -15,7 +15,9 @@ from ptcgp import stats
 BEATS = {("A", "B"), ("B", "C"), ("C", "A")}
 
 
-def make_data(players_per_deck: int = 12, seed: int = 1) -> stats.Data:
+def make_data(players_per_deck: int = 12, seed: int = 1, tech_boost: float = 0.0) -> stats.Data:
+    """``tech_boost`` > 0 : la moitié des joueurs du deck B jouent la carte « Tech Plus » au lieu de
+    « Tech Moins », et gagnent ``tech_boost`` de plus contre tout adversaire."""
     rng = np.random.default_rng(seed)
     sets = pd.DataFrame(
         {
@@ -29,20 +31,20 @@ def make_data(players_per_deck: int = 12, seed: int = 1) -> stats.Data:
     )
     cards = pd.DataFrame(
         {
-            "card_id": ["PK_1", "PK_2", "PK_3", "PK_4", "TR_7"],
-            "name": ["Alpha", "Beta", "Gamma", "Delta", "Professor's Research"],
-            "name_fr": ["Alpha-fr", "Bêta", "Gamma-fr", "Delta-fr", "Recherches Professorales"],
-            "category": ["pokemon", "pokemon", "pokemon", "pokemon", "supporter"],
-            "sets": ["B1", "C1", "B1|C1", "PROMO-B", "PROMO-A"],
-            "is_ex": [False, False, False, False, False],
+            "card_id": ["PK_1", "PK_2", "PK_3", "PK_4", "TR_7", "TR_8", "TR_9"],
+            "name": ["Alpha", "Beta", "Gamma", "Delta", "Professor's Research", "Tech Plus", "Tech Minus"],
+            "name_fr": ["Alpha-fr", "Bêta", "Gamma-fr", "Delta-fr", "Recherches Professorales", "Tech Plus", "Tech Moins"],
+            "category": ["pokemon", "pokemon", "pokemon", "pokemon", "supporter", "item", "item"],
+            "sets": ["B1", "C1", "B1|C1", "PROMO-B", "PROMO-A", "C1", "C1"],
+            "is_ex": [False, False, False, False, False, False, False],
         }
     )
     prints = pd.DataFrame(
         {
-            "card_id": ["PK_1", "PK_1", "PK_2", "PK_3", "PK_3", "PK_4", "TR_7"],
-            "set": ["B1", "B1", "C1", "B1", "C1", "PROMO-B", "PROMO-A"],
-            "number": [10, 250, 20, 30, 31, 4, 7],
-            "rarity": ["C", "SR", "C", "U", "C", "C", "U"],
+            "card_id": ["PK_1", "PK_1", "PK_2", "PK_3", "PK_3", "PK_4", "TR_7", "TR_8", "TR_9"],
+            "set": ["B1", "B1", "C1", "B1", "C1", "PROMO-B", "PROMO-A", "C1", "C1"],
+            "number": [10, 250, 20, 30, 31, 4, 7, 80, 90],
+            "rarity": ["C", "SR", "C", "U", "C", "C", "U", "C", "C"],
         }
     )
     deck_card = {"A": "PK_1", "B": "PK_2", "C": "PK_3"}
@@ -62,6 +64,10 @@ def make_data(players_per_deck: int = 12, seed: int = 1) -> stats.Data:
             if deck == "C" and k < 3:  # quelques listes jouent une promo d'événement
                 deck_cards.append({"tournament_id": "t1", "player": player, "card_id": "PK_4", "set": "PROMO-B", "number": 4, "count": 1})
             deck_cards.append({"tournament_id": "t1", "player": player, "card_id": "TR_7", "set": "PROMO-A", "number": 7, "count": 2})
+            if tech_boost and deck == "B":
+                tech = "TR_8" if k % 2 == 0 else "TR_9"
+                deck_cards.append({"tournament_id": "t1", "player": player, "card_id": tech, "set": "C1", "number": 80, "count": 1})
+    plus = {f"B{k}" for k in range(0, players_per_deck, 2)} if tech_boost else set()
     matches = []
     players = [(e["player"], e["deck"]) for e in entries]
     for i, (p1, d1) in enumerate(players):
@@ -69,6 +75,7 @@ def make_data(players_per_deck: int = 12, seed: int = 1) -> stats.Data:
             if d1 == d2:
                 continue
             p_win = 0.75 if (d1, d2) in BEATS else 0.25
+            p_win += tech_boost * ((p1 in plus) - (p2 in plus))
             result = 1 if rng.random() < p_win else 2
             matches.append({"tournament_id": "t1", "phase": 1, "round": 1, "player1": p1, "player2": p2,
                             "result": result, "games1": int(result == 1), "games2": int(result == 2)})

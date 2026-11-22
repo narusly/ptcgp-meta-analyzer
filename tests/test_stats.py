@@ -166,3 +166,45 @@ def test_holdout_gaps_match_the_score_table():
     assert gap == pytest.approx(scores["Bradley-Terry + lissage bayésien"] - scores["Pile ou face (50 %)"])
     assert low <= gap <= high
     assert gap < 0  # le modèle appris sur t1 prédit t2 mieux que le hasard
+
+
+# --------------------------------------------------------------------------- listes conseillées
+
+
+def test_card_model_finds_the_tech_card_and_recommends_its_list():
+    data = make_data(players_per_deck=20, tech_boost=0.2)
+    res = stats.analyze(data, event_promos=True, min_share=0.0, min_lists=1, draws=300)
+    assert res.lists.attrs["tau"] > 0
+    best, popular = res.recommended("B")
+    assert ("TR_8", 1) in best["signature"]  # la liste avec « Tech Plus »
+    effects = stats.card_table(res, "B").set_index("card_id")
+    assert effects.loc["TR_8", "effect"] > 0 > effects.loc["TR_9", "effect"]
+    plus = next(s for s in res.lists.loc[res.lists["deck"] == "B", "signature"] if ("TR_8", 1) in s)
+    minus = next(s for s in res.lists.loc[res.lists["deck"] == "B", "signature"] if ("TR_9", 1) in s)
+    gap, low, high = stats.list_gap(res, "B", plus, minus)
+    assert low > 0 and low <= gap <= high
+    cards, same, _ = stats.deck_list(res.data, res.legal, "B", None, best["signature"])
+    assert same == 10 and cards["count"].sum() == 5  # 2 Bêta + 2 Recherches + 1 Tech Plus
+
+
+def test_without_a_real_effect_lists_stay_close():
+    res = stats.analyze(make_data(players_per_deck=20, tech_boost=1e-9), event_promos=True, min_share=0.0, min_lists=1, draws=300)
+    lists = res.lists[res.lists["deck"] == "B"]
+    assert (lists["win_rate"].max() - lists["win_rate"].min()) < 0.03
+
+
+def test_recommended_list_needs_enough_players_or_falls_back_to_the_most_played():
+    lists = pd.DataFrame({"deck": ["X"] * 3, "signature": [("a",), ("b",), ("c",)], "players": [40, 3, 6],
+                          "win_rate": [0.50, 0.60, 0.52], "eligible": [True, False, True]})
+    best, popular = stats.recommended_list(lists, "X")
+    assert best["signature"] == ("c",) and popular["signature"] == ("a",)  # 3 joueurs : pas assez
+    best, _ = stats.recommended_list(lists.assign(eligible=False), "X")
+    assert best["signature"] == ("a",)
+
+
+def test_list_text_lists_all_cards_with_versions():
+    cards = pd.DataFrame({"count": [2, 1, 2], "name_fr": ["Mentali", "Tylton", "Poké Ball"], "category": ["pokemon", "pokemon", "item"],
+                          "print": ["B3a-020", "B1-196", "P-A-005"], "available": [True, True, False]})
+    text = stats.list_text("Deck", cards)
+    assert text.startswith("Deck : 5 cartes") and "2× Mentali (B3a-020)" in text and "Dresseurs (2)" in text
+    assert "← hors de ta réserve" in text

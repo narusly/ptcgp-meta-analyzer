@@ -239,6 +239,77 @@ def sidebar(data: stats.Data) -> dict:
     return params
 
 
+LIST_NOTE = (
+    "Liste conseillée : celle qui a le meilleur taux de victoire estimé, à adversaire égal, parmi les listes "
+    f"jouées à l'identique par au moins {stats.MIN_LIST_PLAYERS} joueurs. Sur des tournois que le modèle "
+    "n'avait pas vus, les effets des cartes n'améliorent pas la prédiction : entre deux listes d'un même deck, "
+    "l'écart reste du même ordre que le hasard."
+)
+
+
+def show_list(res: stats.Analysis, deck: str, signature: tuple, name: str, key: str) -> pd.DataFrame:
+    """Les cartes d'une liste exacte (nombre, nom, version à chercher en jeu) et la liste à copier."""
+    cards, _, _ = stats.deck_list(res.data, res.legal, deck, res.allowed, signature)
+    if cards.empty:
+        st.caption("Pas de liste disponible.")
+        return cards
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Nb": cards["count"],
+                "Carte": cards["name_fr"],
+                "Version": cards["print"],
+                "À trouver": cards["available"].map({True: "", False: "hors réserve"}),
+            }
+        ),
+        hide_index=True,
+        height=36 * len(cards) + 40,
+        key=f"table_{key}",
+    )
+    if not cards["available"].all():
+        st.caption("« Hors réserve » : carte absente de tes extensions, à trouver ou à remplacer (tolérance).")
+    with st.expander(f"Copier la liste ({int(cards['count'].sum())} cartes)"):
+        st.code(stats.list_text(name, cards), language=None)
+    return cards
+
+
+def explain_choice(res: stats.Analysis, deck: str, best: pd.Series, popular: pd.Series, cards: pd.DataFrame) -> None:
+    """Pourquoi cette liste : joueurs, taux estimé, et écart avec la liste la plus jouée."""
+    rate = f"taux estimé {pct(best['win_rate'])} [{pct(best['low'])} – {pct(best['high'])}]"
+    if best["signature"] == popular["signature"]:
+        st.caption(f"Jouée à l'identique par {best['players']} joueurs ({rate}). C'est aussi la liste la plus jouée.")
+        return
+    gap, low, high = stats.list_gap(res, deck, best["signature"], popular["signature"])
+    other, _, _ = stats.deck_list(res.data, res.legal, deck, res.allowed, popular["signature"])
+    names = {**dict(zip(other["card_id"], other["name_fr"])), **dict(zip(cards["card_id"], cards["name_fr"]))}
+    prints = {**dict(zip(other["card_id"], other["print"])), **dict(zip(cards["card_id"], cards["print"]))}
+    changes = ", ".join(f"{'+' if v > 0 else '−'}{abs(v)} {names.get(c, c)} ({prints.get(c, '')})"
+                        for c, v in stats.list_difference(best["signature"], popular["signature"]).items())
+    verdict = "écart net" if low > 0 else "écart incertain"
+    pts = lambda x: f"{x * 100:+.1f}".replace(".", ",")
+    st.caption(
+        f"Jouée à l'identique par {best['players']} joueurs ({rate}). Par rapport à la liste la plus jouée "
+        f"({popular['players']} joueurs) : {pts(gap)} pt [{pts(low)} ; {pts(high)}], {verdict}. "
+        f"Cartes qui changent : {changes}."
+    )
+
+
+def recommended_deck(res: stats.Analysis) -> None:
+    """En haut de page : le meilleur deck pour ces réglages et sa liste complète."""
+    top = res.ranking.iloc[0]
+    best, popular = res.recommended(top["deck"])
+    st.subheader("Ton deck recommandé")
+    st.markdown(f"#### {top['name_fr']}")
+    cols = st.columns(3)
+    cols[0].metric("Victoire attendue", pct(top["win_rate"]), help=f"Intervalle à 90 % : {pct(top['low'])} – {pct(top['high'])}")
+    cols[1].metric("Chances d'être le meilleur", pct(top["p_best"], 0))
+    cols[2].metric("Joueurs avec cette liste", f"{best['players']}" if best is not None else "–")
+    if best is not None:
+        cards = show_list(res, top["deck"], best["signature"], top["name_fr"], key="top")
+        explain_choice(res, top["deck"], best, popular, cards)
+    st.caption(LIST_NOTE)
+
+
 def similar_formats(data: stats.Data, params: dict) -> list[str]:
     """Formats détectés dont les extensions sont toutes parmi celles cochées en mode classé."""
     if params["mode"] != CLASSE or not params["sets"] or data.formats.empty:
@@ -293,6 +364,8 @@ def main() -> None:
             st.info(f"Des tournois se jouent avec ces seules extensions : essaie le mode « {REGLES} », format « {same[0]} ».")
         st.caption(CREDITS)
         return
+
+    recommended_deck(res)
 
     st.subheader("Classement")
     if len(ranking) < 3:
@@ -356,24 +429,37 @@ def main() -> None:
         )
         st.caption("Peu de manches observées : le matchup est tiré vers la force globale des deux decks (Bradley-Terry).")
     with right:
-        cards, same, total = stats.deck_list(res.data, res.legal, deck, res.allowed)
-        st.markdown("**Liste type**")
-        st.caption(f"La plus jouée à l'identique : {same} joueur{'s' if same > 1 else ''} sur {total} listes jouables.")
-        if len(cards):
-            st.dataframe(
-                pd.DataFrame(
-                    {
-                        "Nb": cards["count"],
-                        "Carte": cards["name_fr"],
-                        "Version": cards["print"],
-                        "À trouver": cards["available"].map({True: "", False: "hors réserve"}),
-                    }
-                ),
-                hide_index=True,
-                height=420,
-            )
-            if not cards["available"].all():
-                st.caption("« Hors réserve » : carte absente de tes extensions, à trouver ou à remplacer (tolérance).")
+        best, popular = res.recommended(deck)
+        tab_best, tab_popular, tab_cards = st.tabs(["Liste conseillée", "La plus jouée", "Effet des cartes"])
+        with tab_best:
+            if best is not None:
+                cards = show_list(res, deck, best["signature"], row["name_fr"], key=f"best_{deck}")
+                explain_choice(res, deck, best, popular, cards)
+        with tab_popular:
+            if popular is not None:
+                st.caption(f"{popular['players']} joueurs l'ont jouée à l'identique ; taux estimé {pct(popular['win_rate'])}.")
+                show_list(res, deck, popular["signature"], row["name_fr"], key=f"popular_{deck}")
+        with tab_cards:
+            effects = stats.card_table(res, deck)
+            if effects.empty:
+                st.caption("Toutes les listes de ce deck jouent les mêmes cartes.")
+            else:
+                st.dataframe(
+                    pd.DataFrame(
+                        {
+                            "Carte": effects["name_fr"],
+                            "Exemplaires (moyenne)": effects["mean_count"].round(1),
+                            "Effet d'un exemplaire de plus": effects["effect"] * 100,
+                            "Intervalle à 90 %": [f"{r.low * 100:+.1f} à {r.high * 100:+.1f}".replace(".", ",") for r in effects.itertuples()],
+                        }
+                    ),
+                    hide_index=True,
+                    column_config={"Effet d'un exemplaire de plus": st.column_config.NumberColumn(format="%+.1f pt")},
+                )
+                st.caption(
+                    "Effet sur la victoire attendue, à adversaire égal, lissé vers 0 par Bayes empirique. "
+                    "Les écarts dépassent rarement un point : le choix du deck compte bien plus que les retouches."
+                )
 
     with st.expander("Tournois de la période"):
         t = res.data.tournaments.sort_values("date", ascending=False)

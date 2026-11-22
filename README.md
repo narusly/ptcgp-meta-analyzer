@@ -149,6 +149,23 @@ Bradley-Terry. Sans filtre, on retrouve exactement le modèle complet (testé). 
 mélangent beaucoup d'extensions, une **tolérance** accepte les listes auxquelles il manque quelques
 exemplaires, en signalant les cartes à trouver ou à remplacer.
 
+**Liste conseillée (les 20 cartes).** Pour chaque deck, l'app conseille la liste exacte qui a le meilleur
+taux de victoire estimé, parmi celles jouées à l'identique par au moins 5 joueurs :
+
+1. Pour chaque manche d'un deck contre un adversaire, la probabilité de référence est le matchup du
+   deck (moyenne de ses listes jouables).
+2. **Effet des cartes**, à adversaire égal : régression logistique avec ce matchup en décalage et, en
+   variables, le nombre d'exemplaires de chaque carte variable (centré). A priori β ~ N(0, τ²), avec τ
+   choisi par Bayes empirique (vraisemblance marginale de Laplace, tous decks confondus) : τ = 0,045 logit
+   par exemplaire, soit au plus un point de victoire environ par carte.
+3. **Effet d'une liste** = somme des effets de ses cartes, avec son intervalle (covariance a
+   posteriori). Estimer chaque liste séparément ne marche pas : les écarts entre listes entières sont
+   exactement ceux du hasard (variance des écarts standardisés 0,97 pour 1 attendu). En mettant en commun
+   toutes les listes qui jouent une carte, un léger signal apparaît (10 % des cartes variables au-delà du
+   seuil de 5 %, pour 5 % attendus).
+
+La liste la plus jouée reste affichée à côté, avec l'écart entre les deux et les cartes qui changent.
+
 ### Validation
 
 Modèles appris sur les tournois du 29 octobre au 10 novembre, testés sur ceux du 11 au 18 novembre
@@ -166,6 +183,13 @@ bootstrap sur les tournois : −0,0063 [−0,0118 ; −0,0014] contre le pile ou
 −0,0127] contre le taux brut, −0,0050 [−0,0076 ; −0,0019] contre Bradley-Terry seul. Le taux brut fait
 pire que le hasard : il colle au bruit des petits échantillons. Les gains restent modestes en valeur
 absolue, car une manche de Pocket garde une grosse part de hasard (pioche, pile ou face).
+
+**Effets des cartes, sur les mêmes tournois de test** (10 146 manches vues du côté d'un deck classé) : la
+perte logarithmique passe de 0,6857 à 0,6855, soit −0,0002 [−0,0006 ; +0,0002]. Avec une coupure au
+7 novembre : 0,0000 [−0,0002 ; +0,0002]. Les cartes n'améliorent donc pas la prédiction de façon mesurable :
+**le choix du deck compte, les retouches de liste restent dans le bruit**. La liste conseillée et la plus
+jouée se valent à ce que les données permettent de voir ; l'app indique toujours l'écart et son
+intervalle (« écart incertain » quand il contient 0).
 
 ## Formats à règles spéciales
 
@@ -227,11 +251,13 @@ différer légèrement de l'écriture officielle, surtout pour les Méga X et Y.
 
 - **Réglages** (colonne de gauche) : mode, période, extensions de ton deck, promos d'événement (en
   classé), format, extensions et cartes permises (dans un format spécial), tolérance.
+- **Ton deck recommandé** (en haut) : le meilleur deck pour ces réglages et sa **liste complète de 20
+  cartes**, avec la version de chaque carte à chercher en jeu (« B1-102 », « P-A-005 »), les cartes hors
+  de ta réserve, et la liste à copier.
 - **Classement** : victoire attendue avec son intervalle à 90 %, P(meilleur), popularité, listes
   jouables, pires matchups, et un graphique des intervalles.
 - **Détail d'un deck** : tous ses matchups du pire au meilleur, avec leur intervalle et le nombre de
-  manches observées ; la liste type (la plus jouée à l'identique) avec la version de chaque carte
-  (« C1-056 », « P-A-005 ») et les cartes hors de ta réserve.
+  manches observées ; onglets « Liste conseillée », « La plus jouée » et « Effet des cartes ».
 
 ## Limites
 
