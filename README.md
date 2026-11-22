@@ -149,8 +149,12 @@ Bradley-Terry. Sans filtre, on retrouve exactement le modèle complet (testé). 
 mélangent beaucoup d'extensions, une **tolérance** accepte les listes auxquelles il manque quelques
 exemplaires, en signalant les cartes à trouver ou à remplacer.
 
-**Liste conseillée (les 20 cartes).** Pour chaque deck, l'app conseille la liste exacte qui a le meilleur
-taux de victoire estimé, parmi celles jouées à l'identique par au moins 5 joueurs :
+**Liste conseillée (les 20 cartes).** Pour chaque deck, l'app conseille la liste jouée à l'identique par le
+plus de joueurs, sauf si la liste au meilleur taux de victoire estimé (parmi celles jouées par au moins
+5 joueurs) la bat nettement : borne basse de l'intervalle à 90 % de l'écart au-dessus de 0. En classé,
+c'est le cas pour 1 deck sur 34 (Méga-Dracaufeu Y-ex Entei-ex : +5,6 points [+2,3 ; +9,0]) ; avec 17 decks
+où les deux listes diffèrent, un tel cas peut encore venir du hasard. Le taux de chaque liste s'estime
+ainsi :
 
 1. Pour chaque manche d'un deck contre un adversaire, la probabilité de référence est le matchup du
    deck (moyenne de ses listes jouables).
@@ -164,7 +168,8 @@ taux de victoire estimé, parmi celles jouées à l'identique par au moins 5 jou
    toutes les listes qui jouent une carte, un léger signal apparaît (10 % des cartes variables au-delà du
    seuil de 5 %, pour 5 % attendus).
 
-La liste la plus jouée reste affichée à côté, avec l'écart entre les deux et les cartes qui changent.
+L'autre liste candidate reste affichée dans un onglet, avec l'écart entre les deux et les cartes qui
+changent.
 
 ### Validation
 
@@ -187,9 +192,8 @@ absolue, car une manche de Pocket garde une grosse part de hasard (pioche, pile 
 **Effets des cartes, sur les mêmes tournois de test** (10 146 manches vues du côté d'un deck classé) : la
 perte logarithmique passe de 0,6857 à 0,6855, soit −0,0002 [−0,0006 ; +0,0002]. Avec une coupure au
 7 novembre : 0,0000 [−0,0002 ; +0,0002]. Les cartes n'améliorent donc pas la prédiction de façon mesurable :
-**le choix du deck compte, les retouches de liste restent dans le bruit**. La liste conseillée et la plus
-jouée se valent à ce que les données permettent de voir ; l'app indique toujours l'écart et son
-intervalle (« écart incertain » quand il contient 0).
+**le choix du deck compte, les retouches de liste restent dans le bruit**. D'où la règle : sauf avance
+nette, on conseille la liste la plus jouée, éprouvée par bien plus de joueurs.
 
 ## Formats à règles spéciales
 
@@ -257,7 +261,8 @@ différer légèrement de l'écriture officielle, surtout pour les Méga X et Y.
 - **Classement** : victoire attendue avec son intervalle à 90 %, P(meilleur), popularité, listes
   jouables, pires matchups, et un graphique des intervalles.
 - **Détail d'un deck** : tous ses matchups du pire au meilleur, avec leur intervalle et le nombre de
-  manches observées ; onglets « Liste conseillée », « La plus jouée » et « Effet des cartes ».
+  manches observées ; onglets « Liste conseillée », l'autre liste candidate (« Meilleure estimée » ou
+  « La plus jouée ») et « Effet des cartes ».
 
 ## Limites
 
