@@ -1,0 +1,9 @@
+format_id,label,sets,no_ex,singleton,tournaments,players,lists,extra_cards,first_date,last_date,examples
+toutes-sans-ex,Toutes les extensions · sans ex,,True,False,11,646,646,1,2026-09-09T21:30:00.000Z,2026-11-18T18:00:00.000Z,Godzly Spooktacular Tournament | Icetea hometown NOEX(B4a Garchomp banned)20$ | Premier PTCGP League: F-Tier Returns
+A1_A1a_A2_A2a_A2b_A3_A3a_A3b,De A1 à A3b,A1|A1a|A2|A2a|A2b|A3|A3a|A3b,False,False,4,353,353,0,2026-10-11T02:00:00.000Z,2026-10-27T02:00:00.000Z,PMPT THROWBACK SERIES!!! - A3b | $100 USD | Lagoon Blast From The Past (A1 Thru A3b) (Any FA)
+A1_A1a_A2_A2a_A2b,De A1 à A2b,A1|A1a|A2|A2a|A2b,False,False,1,321,321,0,2026-10-10T16:00:00.000Z,2026-10-10T16:00:00.000Z,PMPT THROWBACK SERIES!!! - A2b & More | $100 USD
+A1_A1a_A2_A2a_A2b_A3_A3a_A3b_A4_A4a_A4b,Série A (A1 à A4b),A1|A1a|A2|A2a|A2b|A3|A3a|A3b|A4|A4a|A4b,False,False,2,307,307,0,2026-10-09T12:00:00.000Z,2026-10-24T16:00:00.000Z,PMPT THROWBACK SERIES!!! - FINALE | $100 USD | Yosh Tournament #23 A Series ( Rp 1.700.000+ )
+A1_A1a,De A1 à A1a,A1|A1a,False,False,1,306,306,2,2026-10-03T16:00:00.000Z,2026-10-03T16:00:00.000Z,PMPT THROWBACK SERIES!!! - A1 & A1a | $100 USD
+C1,Fusion Double (C1) seule,C1,False,False,1,303,303,0,2026-11-14T17:00:00.000Z,2026-11-14T17:00:00.000Z,PMPT #51 - DUAL FUSION ONLY!!! | $100 USD
+toutes-sans-ex-1-exemplaire,Toutes les extensions · sans ex · 1 exemplaire par carte,,True,True,4,131,131,2,2026-10-05T02:00:00.000Z,2026-11-11T03:00:00.000Z,Lagoon Gym Leader Challenge (FA Choice Prize) | Lagoon Gym Leader Challenge (OAK OR CYRUS PRIZE)
+B1_B1a_B2_B2a_B2b_B3_B3a_B3b_B4_B4a_B4b,Série B (B1 à B4b),B1|B1a|B2|B2a|B2b|B3|B3a|B3b|B4|B4a|B4b,False,False,1,92,92,2,2026-10-23T12:00:00.000Z,2026-10-23T12:00:00.000Z,Yosh Tournament #24 B Series Only ( Rp 1.000.000 )
